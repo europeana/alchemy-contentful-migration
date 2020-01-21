@@ -671,7 +671,7 @@ const smartDelete = async (itemId, recurseLevel = 0) => {
       console.log(`${pad}error deleting attributed image ${entry.sys.id}`);
     });
   }
-  else {
+  else if(entry.fields.hasPart){
     console.log(`${pad}(delete chapter...)`);
     let hasPartList = loc2arr(entry.fields.hasPart);
     hasPartList.forEach(async (hpArr) => {
@@ -782,6 +782,8 @@ const run = async(exhibitionId) =>  {
 
       let intro = await processRows(introRows.rows, null, true);
       intro = intro[0];
+
+      intro.fields.datePublished = wrapLocale(pDate);
 
       if(!intro.fields.hasPart){
         intro.fields.hasPart = getObjectBase().hasPart;
