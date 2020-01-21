@@ -99,14 +99,21 @@ const adjustRecordUrl = (url) => {
   return uri;
 };
 
-const clean = async (deletable) => new Promise(async resolve => {
+const clean = async (deletable, recursing) => new Promise(async resolve => {
+  if(dryRun){
+    console.log('(skip delete)');
+    return;
+  }
   if(deletable.sys.publishedVersion){
     await deletable.unpublish().catch((e) => {
       console.log('error unpublishing ' + e);
     });
   }
-  await deletable.delete().catch((e) => {
+  await deletable.delete().catch(async (e) => {
     console.log('error deleting' + e);
+    if(!recursing){
+      await clean(deletable, true);
+    }
   });
   resolve();
 });
@@ -163,11 +170,14 @@ const parseHeader = (text) => {
 };
 
 const mimicAsset = (data) => {
-  return Object.assign(
-      {
-        sys: { id: 1 }
-      },
-      data);
+  let result = Object.assign(
+    {
+      sys: { id: 1 }
+    }, data);
+
+  result.update = () => result;
+  result.publish = () => result;
+  return result;
 };
 
 const mimicValidate = (ob, shortTexts, longTexts) => {
@@ -597,20 +607,101 @@ const processRows = async (rows, locales, intro) => {
   return objectReferences;
 };
 
+const smartDelete = async (itemId, recurseLevel = 0) => {
+
+  const pad     = '\t'.repeat(recurseLevel);
+  const loc2arr = (loc) => {
+    let res = [];
+    Object.keys(loc).forEach((key) => {
+      res.push(loc[key])
+    });
+    return res;
+  };
+
+  let entry = await environment.getEntry(itemId).catch((e) => {
+    console.log(`couldn't load entry: ${itemId}`);
+  });
+
+  if(!entry){
+    console.log(`no entry - return`);
+    return;
+  }
+
+  let fNames = Object.keys(entry.fields);
+
+  if(entry.sys.contentType.sys.id === 'richText'){
+    console.log(`${pad}(delete rich text)`);
+    await clean(entry).catch((e) => {
+      console.log(`${pad}error deleting rich text ${entry.sys.id}`);
+    });
+  }
+  else if(entry.sys.contentType.sys.id === 'imageComparison'){
+    console.log(`${pad}(delete image comparison)`);
+    let hasPartList = loc2arr(entry.fields.hasPart);
+    hasPartList.forEach(async (hpArr) => {
+      hpArr.forEach(async (hp) => {
+        await smartDelete(hp.sys.id, recurseLevel + 1);
+      });
+    });
+
+    await clean(entry).catch((e) => {
+      console.log(`${pad}error deleting image comparison ${entry.sys.id}`);
+    });
+  }
+  else if(entry.sys.contentType.sys.id === 'embed'){
+    console.log(`${pad}(delete embed)`);
+    await clean(entry).catch((e) => {
+      console.log(`${pad}error deleting embed ${entry.sys.id}`);
+    });
+  }
+  else if(entry.sys.contentType.sys.id === 'imageWithAttribution'){
+    console.log(`${pad}(delete attributed image ${entry.fields.name[locale]})`);
+    let arr = loc2arr(entry.fields.image);
+    arr.forEach(async (arrItem) => {
+      let asset = await environment.getAsset(arrItem.sys.id).catch((e) => {
+        console.log(`couldn't get asset ${arrItem.sys.id}`);
+      });
+      if(asset){
+        await clean(asset).catch((e) => {
+          console.log(`${pad}error deleting asset ${arrItem.sys.id}`)
+        });
+      }
+    });
+    await clean(entry).catch((e) => {
+      console.log(`${pad}error deleting attributed image ${entry.sys.id}`);
+    });
+  }
+  else {
+    console.log(`${pad}(delete chapter...)`);
+    let hasPartList = loc2arr(entry.fields.hasPart);
+    hasPartList.forEach(async (hpArr) => {
+      hpArr.forEach(async (hp) => {
+        await smartDelete(hp.sys.id, recurseLevel + 1);
+      });
+    });
+
+    let heroList = loc2arr(entry.fields.primaryImageOfPage);
+    heroList.forEach(async (h) => {
+      await smartDelete(h.sys.id, recurseLevel + 1);
+    })
+
+    await clean(entry).catch((e) => {
+      console.log(`${pad}error deleting chapter ${entry.sys.id}`);
+    });
+  }
+}
+
 const runAll = async () =>  {
 
   let startTime = new Date().getTime();
 
   space       = await cClient.getSpace(cSpaceId);
   environment = await space.getEnvironment(cEnvironmentId);
+  let ex      = await environment.getEntries({ content_type: 'exhibitionPage'});
 
-  await cleanEntries('asset');
-  await cleanEntries('embed');
-  await cleanEntries('richText');
-  await cleanEntries('imageComparison');
-  await cleanEntries('imageWithAttribution');
-  await cleanEntries('exhibitionChapterPage');
-  await cleanEntries('exhibitionPage');
+  ex.items.forEach(async (item) => {
+    await smartDelete(item.sys.id);
+  });
 
   await pgClient.connect();
 
@@ -620,7 +711,7 @@ const runAll = async () =>  {
   console.log(resArr);
 
   resArr = resArr.reverse();
-  //resArr = [5];
+
   let completeCount = 0;
 
   await Promise.all(
