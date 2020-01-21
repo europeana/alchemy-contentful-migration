@@ -362,7 +362,19 @@ const getImageCredit = async (rows, id) => {
 
   if(creditRow){
     let res = await pgClient.query(`SELECT * FROM alchemy_essence_credits where id = ${creditRow.essence_id}`);
-    return res.rows && res.rows.length > 0 ? res.rows[0] : null;
+    let resChecked = res.rows && res.rows.length > 0 ? res.rows[0] : null;
+
+    if(resChecked && resChecked.url){
+      let reg = /^(ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!-\/]))?$/;
+      let urlX = resChecked.url.trim();
+      let valid = urlX.match(reg);
+      resChecked.url = valid ? urlX : '';
+
+      if(!valid){
+        err('Invalid image credit url: ' + urlX);
+      }
+    }
+    return resChecked;
   }
 };
 
@@ -378,9 +390,9 @@ const getPictureCredit = async(picEssenceId, rows, elementId) => {
         resolve(credit);
       })
     ])
-        .then((data) => {
-          resolveAll(data);
-        });
+    .then((data) => {
+      resolveAll(data);
+    });
   });
 };
 
@@ -435,7 +447,9 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
   };
   //TODO: 'MISSING', 'LInk Error' urls needs to be mapped to ''/null,
   // strings need to be trimmed. Best to compare against validation regex.
+
   imageObject.fields.url = wrapLocale(adjustRecordUrl(credit.url), null, maxLengthShort);
+
   imageObject = await writeEntry('imageWithAttribution', imageObject);
 
   if(row.element_name === 'image_compare'){
