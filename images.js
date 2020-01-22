@@ -35,8 +35,10 @@ const wrapLocale = (val, l, max) => {
 };
 
 const migrateImage = async(picture) => {
-  if (images[picture.image_file_uid]) {
-    console.log(`[EXISTS] ${picture.image_file_uid}: ${images[picture.image_file_uid]}`);
+  const uid = encodeURIComponent(picture.image_file_uid);
+
+  if (images[uid]) {
+    console.log(`[EXISTS] ${uid}: ${images[uid]}`);
     return;
   }
 
@@ -46,20 +48,20 @@ const migrateImage = async(picture) => {
         title: wrapLocale(picture.title, null, maxLengthShort),
         file: wrapLocale({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
-          fileName: picture.image_file_uid,
-          upload: `${imageServer}${encodeURIComponent(picture.image_file_uid)}`
+          fileName: picture.image_file_name,
+          upload: `${imageServer}${uid}`
         })
       }
     });
 
     const processedAsset = await asset.processForAllLocales();
     await processedAsset.publish();
-    images[picture.image_file_uid] = asset.sys.id;
+    images[uid] = asset.sys.id;
     fs.writeFileSync(imageLog, JSON.stringify(images, null, 2));
 
-    console.log(`[NEW] ${picture.image_file_uid}: ${asset.sys.id}`);
+    console.log(`[NEW] ${uid}: ${asset.sys.id}`);
   } catch(e) {
-    console.log(`[ERROR] ${picture.image_file_uid}: ${asset.sys.id} / ${e}`);
+    console.log(`[ERROR] ${uid}: ${asset.sys.id} / ${e}`);
   }
 };
 
@@ -69,7 +71,7 @@ const migrateImages = async() => {
 
   await pgClient.connect();
   const res = await pgClient.query(`
-    SELECT DISTINCT ON (ap.id, ap.image_file_uid, ap.image_file_format) aec.title, ap.image_file_uid, ap.image_file_format
+    SELECT DISTINCT ON (ap.id, ap.image_file_uid, ap.image_file_format, ap.image_file_name) aec.title, ap.image_file_uid, ap.image_file_format, ap.image_file_name
     FROM alchemy_essence_pictures aep
     INNER JOIN alchemy_pictures ap ON aep.picture_id=ap.id
     INNER JOIN alchemy_contents ac ON ac.essence_id=aep.id AND ac.essence_type='Alchemy::EssencePicture'
