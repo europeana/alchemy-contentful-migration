@@ -456,6 +456,7 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
     if(cache.imageCompare){
       let imageCompare = await writeEntry('imageComparison', {
         fields: {
+          name: wrapLocale(imageObject.fields.name[locale], null, maxLengthShort),
           hasPart: wrapLocale([
             getEntryLink(cache.imageCompare.sys.id),
             getEntryLink(imageObject.sys.id)
