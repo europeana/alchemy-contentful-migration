@@ -167,7 +167,7 @@ const writeEntry = async (type, entryData) => {
     let entry;
     entry = await environment.createEntry(type, entryData);
     if(type != 'exhibitionPage'){
-      await entry.publish().catch((e) => {
+      entry.publish().catch((e) => {
         err(`Error publishing ${type} ${entry.sys.id}: ${e}`);
       });
     }
