@@ -61,7 +61,7 @@ const migrateImage = async(picture) => {
 
     console.log(`[NEW] ${uid}: ${asset.sys.id}`);
   } catch(e) {
-    console.log(`[ERROR] ${uid}: ${asset.sys.id} / ${e}`);
+    console.log(`[ERROR] ${uid}: ${e}`);
   }
 };
 
