@@ -6,7 +6,6 @@ const fs = require('fs');
 const TurndownService = require('turndown');
 const turndownService = new TurndownService();
 const errorLog = fs.createWriteStream('log.txt', {flags: 'w'});
-const imageServer = process.env.alchemyImageServer;
 const locale = 'en-GB';
 
 const maxLengthShort = 255;
@@ -24,6 +23,8 @@ const dryRun = false; // change to true for dryRun
 
 let space;
 let environment;
+
+let imageSysIds;
 
 const cEnvironmentId = process.env.cEnvironmentId;
 const cSpaceId = process.env.cSpaceId;
@@ -102,6 +103,7 @@ const adjustRecordUrl = (url) => {
 const clean = async (deletable, recursing) => new Promise(async resolve => {
   if(dryRun){
     console.log('(skip delete)');
+    resolve();
     return;
   }
   if(deletable.sys.publishedVersion){
@@ -116,43 +118,6 @@ const clean = async (deletable, recursing) => new Promise(async resolve => {
     }
   });
   resolve();
-});
-
-const cleanEntries = async (type) => new Promise(async resolvecleanEntries => {
-
-  if(dryRun){
-    resolvecleanEntries();
-    return;
-  }
-
-  let entries;
-
-  if(type == 'asset'){
-    entries = await environment.getAssets();
-  }
-  else{
-    entries = await environment.getEntries({ content_type: type});
-  }
-
-  if(entries.items.length === 0){
-    console.log('(no more entries to delete)');
-    resolvecleanEntries();
-  }
-  else{
-    console.log(`will remove ${entries.items.length} entries of type ${type}...`);
-    await Promise.all(
-        entries.items.map(async (ob, index) => {
-          return new Promise(async resolve => {
-            await clean(ob).catch((e) => {
-              console.log('error deleting ' + type);
-            });
-            resolve();
-          })
-        })
-    );
-    await cleanEntries(type);
-    resolvecleanEntries();
-  }
 });
 
 const parseHeader = (text) => {
@@ -200,18 +165,8 @@ const writeEntry = async (type, entryData) => {
   }
   else{
     let entry;
-    if(type == 'asset'){
-      entry = await environment.createAsset(entryData);
-    }
-    else{
-      entry = await environment.createEntry(type, entryData);
-    }
-
+    entry = await environment.createEntry(type, entryData);
     if(type != 'exhibitionPage'){
-
-      if(type === 'asset'){
-        entry = await entry.processForAllLocales();
-      }
       await entry.publish().catch((e) => {
         err(`Error publishing ${type} ${entry.sys.id}: ${e}`);
       });
@@ -416,16 +371,14 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
     err(`Cropped credits url ${credit.url} for ${credit.title} (essence_id ${row.essence_id}, element_id: ${row.element_id})`);
   }
 
-  let asset = await writeEntry('asset', {
-    fields: {
-      title: wrapLocale(credit.title, null, maxLengthShort),
-      file: wrapLocale({
-        contentType: 'image/jpeg',
-        fileName: picture.image_file_uid,
-        upload: `${imageServer}${encodeURIComponent(picture.image_file_uid)}`
-      })
-    }
-  });
+  let assetSysId = imageSysIds[encodeURIComponent(picture.image_file_uid)];
+
+  if(!assetSysId){
+    let msg = `Missing asset for ${picture.image_file_uid}\n\t${encodeURIComponent(picture.image_file_uid)}`;
+    console.log(msg);
+    err(`Missing asset for: ${picture.image_file_uid}`);
+    return;
+  }
 
   let imageObject = {
     fields: {
@@ -436,7 +389,7 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
           sys: {
             type: 'Link',
             linkType: 'Asset',
-            id: asset.sys.id
+            id: assetSysId
           }
         }
       },
@@ -445,8 +398,6 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
       license: wrapLocale(licenseLookup(credit.license))
     }
   };
-  //TODO: 'MISSING', 'LInk Error' urls needs to be mapped to ''/null,
-  // strings need to be trimmed. Best to compare against validation regex.
 
   imageObject.fields.url = wrapLocale(adjustRecordUrl(credit.url), null, maxLengthShort);
 
@@ -456,6 +407,7 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
     if(cache.imageCompare){
       let imageCompare = await writeEntry('imageComparison', {
         fields: {
+          name: wrapLocale(imageObject.fields.name[locale], null, maxLengthShort),
           hasPart: wrapLocale([
             getEntryLink(cache.imageCompare.sys.id),
             getEntryLink(imageObject.sys.id)
@@ -621,9 +573,20 @@ const processRows = async (rows, locales, intro) => {
   return objectReferences;
 };
 
-const smartDelete = async (itemId, recurseLevel = 0) => {
+const smartDelete = async (itemId, recurseLevel = 0) =>  new Promise(async resolve => {
+
+  let entry = await environment.getEntry(itemId).catch((e) => {
+    console.log(`couldn't load entry: ${itemId}`);
+  });
+
+  if(!entry){
+    console.log(`no entry - return`);
+    resolve();
+    return;
+  }
 
   const pad     = '\t'.repeat(recurseLevel);
+
   const loc2arr = (loc) => {
     let res = [];
     Object.keys(loc).forEach((key) => {
@@ -632,78 +595,51 @@ const smartDelete = async (itemId, recurseLevel = 0) => {
     return res;
   };
 
-  let entry = await environment.getEntry(itemId).catch((e) => {
-    console.log(`couldn't load entry: ${itemId}`);
-  });
+  const cleanArr = async (arr) => {
+    await Promise.all(arr.map(async (deletableId) => {
+      return new Promise(async resolve => {
+        await smartDelete(deletableId, recurseLevel + 1);
+        resolve();
+      });
+    }));
+  };
 
-  if(!entry){
-    console.log(`no entry - return`);
-    return;
-  }
+  const cleanArr2D = async (arr) => {
+    let deletableIds = [];
+    arr.forEach(async (innerArr) => {
+      innerArr.forEach(async (item) => {
+        deletableIds.push(item.sys.id);
+      });
+    });
+    await cleanArr(deletableIds);
+  };
 
   let fNames = Object.keys(entry.fields);
 
-  if(entry.sys.contentType.sys.id === 'richText'){
-    console.log(`${pad}(delete rich text)`);
-    await clean(entry).catch((e) => {
-      console.log(`${pad}error deleting rich text ${entry.sys.id}`);
-    });
-  }
-  else if(entry.sys.contentType.sys.id === 'imageComparison'){
-    console.log(`${pad}(delete image comparison)`);
-    let hasPartList = loc2arr(entry.fields.hasPart);
-    hasPartList.forEach(async (hpArr) => {
-      hpArr.forEach(async (hp) => {
-        await smartDelete(hp.sys.id, recurseLevel + 1);
-      });
-    });
+  console.log(`${pad}(delete ${entry.sys.contentType.sys.id})`);
 
-    await clean(entry).catch((e) => {
-      console.log(`${pad}error deleting image comparison ${entry.sys.id}`);
-    });
-  }
-  else if(entry.sys.contentType.sys.id === 'embed'){
-    console.log(`${pad}(delete embed)`);
-    await clean(entry).catch((e) => {
-      console.log(`${pad}error deleting embed ${entry.sys.id}`);
-    });
-  }
-  else if(entry.sys.contentType.sys.id === 'imageWithAttribution'){
-    console.log(`${pad}(delete attributed image ${entry.fields.name[locale]})`);
-    let arr = loc2arr(entry.fields.image);
-    arr.forEach(async (arrItem) => {
-      let asset = await environment.getAsset(arrItem.sys.id).catch((e) => {
-        console.log(`couldn't get asset ${arrItem.sys.id}`);
-      });
-      if(asset){
-        await clean(asset).catch((e) => {
-          console.log(`${pad}error deleting asset ${arrItem.sys.id}`)
-        });
-      }
-    });
-    await clean(entry).catch((e) => {
-      console.log(`${pad}error deleting attributed image ${entry.sys.id}`);
-    });
-  }
-  else if(entry.fields.hasPart){
-    console.log(`${pad}(delete chapter...)`);
+  if(entry.fields.hasPart){
     let hasPartList = loc2arr(entry.fields.hasPart);
-    hasPartList.forEach(async (hpArr) => {
-      hpArr.forEach(async (hp) => {
-        await smartDelete(hp.sys.id, recurseLevel + 1);
-      });
-    });
-
+    await cleanArr2D(hasPartList);
+  }
+  if(entry.fields.primaryImageOfPage){
     let heroList = loc2arr(entry.fields.primaryImageOfPage);
-    heroList.forEach(async (h) => {
-      await smartDelete(h.sys.id, recurseLevel + 1);
-    })
-
-    await clean(entry).catch((e) => {
-      console.log(`${pad}error deleting chapter ${entry.sys.id}`);
-    });
+    await cleanArr(heroList.map((h) => {
+      return h.sys.id;
+    }));
   }
-}
+  await clean(entry).catch((e) => {
+    console.log(`${pad}error deleting ${entry.sys.contentType.sys.id} ${entry.sys.id}`);
+  });
+  resolve();
+});
+
+const getTimeString = (startTime, endTime, message) => {
+  let totalTime = parseInt((endTime - startTime) / 1000);
+  let seconds = parseInt(totalTime % 60);
+  let minutes = parseInt(totalTime / 60);
+  return `${minutes} minute${minutes == 1 ? '' : 's'} and ${seconds} second${seconds == 1 ? '' : 's'}`;
+};
 
 const runAll = async () =>  {
 
@@ -713,40 +649,37 @@ const runAll = async () =>  {
   environment = await space.getEnvironment(cEnvironmentId);
   let ex      = await environment.getEntries({ content_type: 'exhibitionPage'});
 
-  ex.items.forEach(async (item) => {
-    await smartDelete(item.sys.id);
-  });
+  // TO WORK ON A SINGLE EXHIBITION:
+  // (1)- comment out this while loop
+  while(nextExhibition = ex.items.pop()){
+    await smartDelete(nextExhibition.sys.id);
+  }
+  // (2)- uncomment this single line
+  //await smartDelete('exhibitionId');
+
+  console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
 
   await pgClient.connect();
-
   let resArr = await queryExhibitions('en');
   resArr = resArr.rows.map(x => x.parent_id);
-
   console.log(resArr);
-
   resArr = resArr.reverse();
 
+  // (3)- override the items to process
+  //resArr = [612];
+
   let completeCount = 0;
+  let queueLength = resArr.length;
 
-  await Promise.all(
-      resArr.map(async (exId) => {
-        return new Promise(async resolve => {
-          await run(exId);
-          completeCount ++;
-          const pct = parseInt((completeCount / resArr.length) * 100);
-          console.log(`\n\t\t--> written exhibition ${exId}\t ${pct}%\t(${completeCount} of ${resArr.length})`);
-          resolve();
-        })
-      })
-  );
-  let endTime = new Date().getTime();
-  console.log(startTime)
-  console.log(endTime)
-  let totalTime = parseInt((endTime - startTime) / 1000);
-  let seconds = parseInt(totalTime % 60);
-  let minutes = parseInt(totalTime / 60);
+  while(nextExhibitionId = resArr.pop()){
+    await run(nextExhibitionId);
+    const pct = parseInt(100 - (resArr.length / queueLength) * 100);
+    completeCount ++;
+    console.log(`\n\t\t--> written exhibition ${nextExhibitionId}\t ${pct}%\t(${completeCount} of ${queueLength})`);
+    console.log('\t\t--> running for ' + getTimeString(startTime, new Date().getTime()));
+  }
 
-  console.log(`\ndone in ${minutes} minute${minutes == 1 ? '' : 's'} and ${seconds} second${seconds == 1 ? '' : 's'}!\n`);
+  console.log('done in ' + getTimeString(startTime, new Date().getTime()));
 
   errorLog.end('');
   await pgClient.end();
@@ -827,4 +760,14 @@ const run = async(exhibitionId) =>  {
     console.log('No data for ' + exhibitionId);
   }
 };
-runAll();
+
+fs.readFile('tmp/images.json', (err, data) => {
+  if(err){
+    console.log(`Generate the images first by running:\n\tnode images.js\n${err}`);
+  }
+  else{
+    imageSysIds = JSON.parse(data);
+    console.log(`Proceed!`);
+    runAll();
+  }
+});
