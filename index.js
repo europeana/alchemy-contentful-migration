@@ -313,7 +313,7 @@ const getImageCredit = async (essence_id) => {
   let res = await pgClient.query(`SELECT * FROM alchemy_essence_credits where id = ${essence_id}`);
   let resChecked = res.rows && res.rows.length > 0 ? res.rows[0] : null;
 
-  if(resChecked && resChecked.url){
+  if(resChecked){
     let reg = /^(ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!-\/]))?$/;
     let urlX = resChecked.url.trim();
     let valid = urlX.match(reg);
@@ -398,13 +398,14 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
           }
         }
       },
-      url: wrapLocale(adjustRecordUrl(credit.url), null, maxLengthShort),
       provider: wrapLocale(credit.institution, null, maxLengthShort),
       license: wrapLocale(licenseLookup(credit.license))
     }
   };
 
-  imageObject.fields.url = wrapLocale(adjustRecordUrl(credit.url), null, maxLengthShort);
+  if(credit.url && credit.url.length > 0){
+    imageObject.fields.url =  wrapLocale(adjustRecordUrl(credit.url), null, maxLengthShort);
+  }
 
   imageObject = await writeEntry('imageWithAttribution', imageObject);
 
