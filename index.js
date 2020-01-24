@@ -309,31 +309,24 @@ const queryText = async(id, rich) => {
   return res.rows && res.rows.length > 0 ? res.rows[0].body : null;
 };
 
-const getImageCredit = async (rows, id) => {
-  let creditRow = rows.filter(row => {
-    return row.element_id === id
-        && row.essence_type === 'Alchemy::EssenceCredit'
-  })[0];
+const getImageCredit = async (essence_id) => {
+  let res = await pgClient.query(`SELECT * FROM alchemy_essence_credits where id = ${essence_id}`);
+  let resChecked = res.rows && res.rows.length > 0 ? res.rows[0] : null;
 
-  if(creditRow){
-    let res = await pgClient.query(`SELECT * FROM alchemy_essence_credits where id = ${creditRow.essence_id}`);
-    let resChecked = res.rows && res.rows.length > 0 ? res.rows[0] : null;
+  if(resChecked && resChecked.url){
+    let reg = /^(ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!-\/]))?$/;
+    let urlX = resChecked.url.trim();
+    let valid = urlX.match(reg);
+    resChecked.url = valid ? urlX : '';
 
-    if(resChecked && resChecked.url){
-      let reg = /^(ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!-\/]))?$/;
-      let urlX = resChecked.url.trim();
-      let valid = urlX.match(reg);
-      resChecked.url = valid ? urlX : '';
-
-      if(!valid){
-        err('Invalid image credit url: ' + urlX);
-      }
+    if(!valid){
+      err('Invalid image credit url: ' + urlX);
     }
-    return resChecked;
   }
+  return resChecked;
 };
 
-const getPictureCredit = async(picEssenceId, rows, elementId) => {
+const getPictureCredit = async(picEssenceId, rows, elementId, image_2) => {
   return new Promise(async resolveAll => {
     await Promise.all([
       new Promise(async (resolve) => {
@@ -341,8 +334,20 @@ const getPictureCredit = async(picEssenceId, rows, elementId) => {
         resolve(picture);
       }),
       new Promise(async (resolve) => {
-        let credit = await getImageCredit(rows, elementId);
-        resolve(credit);
+        let essenceId;
+        rows = rows.filter(row => {
+          return row.element_id === elementId
+              && row.essence_type === 'Alchemy::EssenceCredit'
+              && (image_2 ? row.name === 'image_2_credit' : row.name !== 'image_2_credit')
+        });
+
+        if(rows.length > 0){
+          let credit = await getImageCredit(rows[0].essence_id);
+          resolve(credit);
+        }
+        else{
+          resolve(null)
+        }
       })
     ])
     .then((data) => {
@@ -405,9 +410,12 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
 
   if(row.element_name === 'image_compare'){
     if(cache.imageCompare){
+      let icTitle = [cache.imageCompare.fields.name[locale],
+        imageObject.fields.name[locale]].join(' / ');
+
       let imageCompare = await writeEntry('imageComparison', {
         fields: {
-          name: wrapLocale(imageObject.fields.name[locale], null, maxLengthShort),
+          name: wrapLocale(icTitle, null, maxLengthShort),
           hasPart: wrapLocale([
             getEntryLink(cache.imageCompare.sys.id),
             getEntryLink(imageObject.sys.id)
@@ -553,7 +561,7 @@ const processRows = async (rows, locales, intro) => {
     }
     else if(row.essence_type === 'Alchemy::EssencePicture'){
 
-      let pc = await getPictureCredit(row.essence_id, rows, row.element_id);
+      let pc = await getPictureCredit(row.essence_id, rows, row.element_id, row.name === 'image_2');
 
       if(pc[0] && pc[1]){
         await processImageRow(row, cObject, cCache, intro, pc);
