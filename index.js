@@ -461,10 +461,6 @@ const processTextRow = async (row, cObject, isIntro) => {
     if(!cObject.name){
       cObject.name = wrapLocale(text, null, maxLengthShort);
     }
-    else{
-      const rt = await writeEntry('richText', { fields: { headline: wrapLocale(text, null, maxLengthShort) } });
-      cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
-    }
   }
   else if(row.name === 'sub_title'){
     if(!cObject.headline){
