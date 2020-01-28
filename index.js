@@ -519,22 +519,7 @@ const processRows = async (rows, locales, intro) => {
       let entryType   = intro ? 'exhibitionPage' : 'exhibitionChapterPage';
       let urlRowIndex = Math.max(0, rowIndex-1);
       let urlName     = rows[urlRowIndex].urlname.substr(0, maxLengthShort);
-      let idData      = { identifier: wrapLocale(urlName) };
-
-      /* locales / experiment */
-
-      if(locales){
-        Object.keys(locales).filter((key) => {
-          return locales[key][urlRowIndex] ?
-              locales[key][urlRowIndex].urlname === urlName : urlName;
-        })
-            .forEach((key) => {
-                  idData.identifier = Object.assign(idData.identifier, { [localeLookup(key)] : urlName });
-                }
-            ); //console.log('\tlocalised identifier:\n\t\t' + JSON.stringify(idData));
-      }
-
-      /* end locales / experiment */
+      let idData      = { identifier: wrapLocale(urlName.split('/').pop()) };
 
       let entryData = Object.assign(cObject, idData);
       let exhibitionObject = await writeEntry(entryType, { fields: entryData });
