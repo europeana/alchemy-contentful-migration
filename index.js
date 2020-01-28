@@ -19,7 +19,6 @@ const pgClient = new Client({
 });
 
 const dryRun = false; // change to true for dryRun
-//const dryRun = true;
 
 let space;
 let environment;
@@ -450,7 +449,8 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
 
 const processTextRow = async (row, cObject, isIntro) => {
 
-  let text = await queryText(row.essence_id, row.essence_type === 'Alchemy::EssenceRichtext');
+  let isRich = row.essence_type === 'Alchemy::EssenceRichtext';
+  let text = await queryText(row.essence_id, isRich);
 
   if(!text){
     return;
@@ -473,10 +473,12 @@ const processTextRow = async (row, cObject, isIntro) => {
       if (splitText) {
         if (isIntro) {
           cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
-        } else {
+        }
+        else {
           cObject.description = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthShort);
         }
-      } else {
+      }
+      else {
         cObject.description = wrapLocale(text, null, maxLengthShort);
       }
     }
@@ -519,9 +521,13 @@ const processRows = async (rows, locales, intro) => {
       let entryType   = intro ? 'exhibitionPage' : 'exhibitionChapterPage';
       let urlRowIndex = Math.max(0, rowIndex-1);
       let urlName     = rows[urlRowIndex].urlname.substr(0, maxLengthShort);
-      let idData      = { identifier: wrapLocale(urlName.split('/').pop()) };
+
+      let idData      = {
+        identifier: wrapLocale(urlName.split('/').pop())
+      };
 
       let entryData = Object.assign(cObject, idData);
+
       let exhibitionObject = await writeEntry(entryType, { fields: entryData });
 
       objectReferences.push(exhibitionObject);
@@ -534,9 +540,13 @@ const processRows = async (rows, locales, intro) => {
       await fnEndSection();
     }
 
-    rowTitle = rows[rowIndex].title.trim();
-
     let row = rows[rowIndex];
+    rowTitle = row.title.trim();
+    let description = row.meta_description;
+
+    if(description && !cObject.description){
+      cObject.description = wrapLocale(description, null, maxLengthLong);
+    }
 
     if(row.essence_type === 'Alchemy::EssenceHtml'){
       await processEmbedRow(row, cObject, `Exhibition content for ${rowTitle}`);
@@ -641,9 +651,9 @@ const runAll = async () =>  {
 
   // TO WORK ON A SINGLE EXHIBITION:
   // (1)- comment out this while loop
-  while(nextExhibition = ex.items.pop()){
-    await smartDelete(nextExhibition.sys.id);
-  }
+  //while(nextExhibition = ex.items.pop()){
+  //  await smartDelete(nextExhibition.sys.id);
+  //}
   // (2)- uncomment this single line
   //await smartDelete('exhibitionId');
 
