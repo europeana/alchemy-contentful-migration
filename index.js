@@ -534,9 +534,13 @@ const processRows = async (rows, locales, intro) => {
       await fnEndSection();
     }
 
-    rowTitle = rows[rowIndex].title.trim();
-
     let row = rows[rowIndex];
+    rowTitle = row.title.trim();
+    let description = row.meta_description;
+
+    if(description && !cObject.description){
+      cObject.description = wrapLocale(description, null, maxLengthLong);
+    }
 
     if(row.essence_type === 'Alchemy::EssenceHtml'){
       await processEmbedRow(row, cObject, `Exhibition content for ${rowTitle}`);
