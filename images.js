@@ -1,4 +1,5 @@
 require('dotenv').config();
+
 const contentful = require('contentful-management');
 const { Client } = require('pg');
 const fs = require('fs');
@@ -9,7 +10,6 @@ const imageLog = './tmp/images.json';
 const images = fs.existsSync(imageLog) ? require(imageLog) : {};
 
 const maxLengthShort = 255;
-const maxLengthLong = 2000;
 
 const pgClient = new Client({
   user: process.env.pgUser,
@@ -60,7 +60,7 @@ const migrateImage = async(picture) => {
     fs.writeFileSync(imageLog, JSON.stringify(images, null, 2));
 
     console.log(`[NEW] ${uid}: ${asset.sys.id}`);
-  } catch(e) {
+  } catch (e) {
     console.log(`[ERROR] ${uid}: ${e}`);
   }
 };

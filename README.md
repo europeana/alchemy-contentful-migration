@@ -51,3 +51,10 @@ The script generates the file log.txt to record:
 * missing rights statements
 * cropped urls
 * unused images
+
+### Credits
+
+After entries are created, add the credits with:
+```
+npm run credits
+```

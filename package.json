@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "credits": "node src/credits.js",
+    "lint": "eslint --ext .js --ignore-path .gitignore .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
@@ -15,5 +17,6 @@
     "dotenv": "^8.2.0",
     "pg": "^7.17.1",
     "turndown": "^5.0.3"
-  }
+  },
+  "devDependencies": {}
 }
