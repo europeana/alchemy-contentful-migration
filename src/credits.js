@@ -24,7 +24,6 @@ const pagesSql = `
   where
     depth > 1
     and urlname like '%/credits'
-    and language_code='en'
   order by
     ap.urlname,
     ap.language_code
@@ -110,8 +109,25 @@ const pageFromRow = async(row) => {
   return page;
 };
 
-const creditExhibition = async(page) => {
-  const exhibitionSlug = page.urlname.split('/')[0];
+const localeMap = {
+  de: 'de-DE',
+  en: 'en-GB',
+  'en-gb': 'en-GB',
+  es: 'es-ES',
+  fi: 'fi-FI',
+  fr: 'fr-FR',
+  it: 'it-IT',
+  lv: 'lv-LV',
+  nl: 'nl-NL',
+  pl: 'pl-PL',
+  ro: 'ro-RO',
+  sl: 'sl-SI',
+  sv: 'sv-SE'
+};
+
+const creditExhibition = async(urlname, rows) => {
+  console.log(urlname);
+  const exhibitionSlug = urlname.split('/')[0];
 
   const entries = await contentfulConnection.getEntries({
     'content_type': 'exhibitionPage',
@@ -122,8 +138,13 @@ const creditExhibition = async(page) => {
   const entry = entries.items[0];
 
   if (!entry.fields.credits) entry.fields.credits = {};
-  // TODO: add localisation handling
-  entry.fields.credits['en-GB'] = page.credits;
+
+  for (locale in rows) {
+    console.log(`- ${locale}`);
+    const page = await pageFromRow(rows[locale]);
+    entry.fields.credits[localeMap[locale]] = page.credits;
+  }
+
   const updated = await entry.update();
   await updated.publish();
 };
@@ -134,11 +155,14 @@ const run = async() => {
 
   const result = await pgClient.query(pagesSql);
 
+  const groupedRows = {};
   for (const row of result.rows) {
-    console.log(row.urlname, row['language_code']);
-    const page = await pageFromRow(row);
-    await creditExhibition(page);
-    // console.log(JSON.stringify(page, null, 2));
+    if (!groupedRows[row.urlname]) groupedRows[row.urlname] = {};
+    groupedRows[row.urlname][row['language_code']] = row;
+  }
+
+  for (const urlname in groupedRows) {
+    await creditExhibition(urlname, groupedRows[urlname]);
   }
 
   await pgClient.end();
