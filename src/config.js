@@ -1,4 +1,6 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 
 const { Client } = require('pg');
 const contentful = require('contentful-management');
@@ -22,8 +24,12 @@ contentfulClient.connect = async function() {
 const TurndownService = require('turndown');
 const turndownService = new TurndownService();
 
+const imageLogPath = path.resolve(__dirname, '../tmp/images.json');
+const imageLog = fs.existsSync(imageLogPath) ? JSON.parse(fs.readFileSync(imageLogPath, 'utf8')) : {};
+
 module.exports = {
   pgClient,
   contentfulClient,
-  turndownService
+  turndownService,
+  imageLog
 };

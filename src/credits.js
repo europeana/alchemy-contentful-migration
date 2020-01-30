@@ -1,4 +1,5 @@
-const { pgClient, turndownService } = require('./config');
+const { imageLog, pgClient, turndownService, contentfulClient } = require('./config');
+let contentfulConnection;
 
 const pagesSql = `
   select
@@ -23,6 +24,7 @@ const pagesSql = `
   where
     depth > 1
     and urlname like '%/credits'
+    and language_code='en'
   order by
     ap.urlname,
     ap.language_code
@@ -61,6 +63,16 @@ const fetchEssence = async(type, id) => {
   return row;
 };
 
+const contentfulAssetForAlchemyPicture = async(imageFileUid) => {
+  const uid = encodeURIComponent(imageFileUid);
+  const assetId = imageLog[uid];
+  if (!assetId) return '';
+
+  const asset = await contentfulConnection.getAsset(assetId);
+
+  return turndownService.turndown(`<img src="https:${asset.fields.file['en-GB'].url}"/>`);
+};
+
 const creditsFromEssences = async(essences) => {
   let credits = '';
   for (const essence of essences) {
@@ -69,8 +81,7 @@ const creditsFromEssences = async(essences) => {
         credits = credits + await turndownService.turndown(`<h2>${essence.value}</h2>`);
         break;
       case 'Alchemy::EssencePicture':
-        // TODO: update with actual Contentful asset URL from tmp/images.json
-        credits = credits + await turndownService.turndown(`<img src="${essence.value}" alt=""/>`);
+        credits = credits + await contentfulAssetForAlchemyPicture(essence.value);
         break;
       case 'Alchemy::EssenceRichtext':
         credits = credits + await turndownService.turndown(essence.value);
@@ -82,34 +93,53 @@ const creditsFromEssences = async(essences) => {
   return credits;
 };
 
-const pagesFromRows = async(rows) => {
-  const pages = [];
-  for (const row of rows) {
-    const essences = [];
-    for (const essence of row.essences) {
-      const essenceData = await fetchEssence(essence.type, essence.id);
-      if (essenceData) essences.push(essenceData);
-    }
-    const credits = await creditsFromEssences(essences);
-
-    const page = {
-      urlname: row.urlname,
-      language_code: row['language_code'],
-      credits
-    };
-
-    pages.push(page);
+const pageFromRow = async(row) => {
+  const essences = [];
+  for (const essence of row.essences) {
+    const essenceData = await fetchEssence(essence.type, essence.id);
+    if (essenceData) essences.push(essenceData);
   }
-  return pages;
+  const credits = await creditsFromEssences(essences);
+
+  const page = {
+    urlname: row.urlname,
+    'language_code': row['language_code'],
+    credits
+  };
+
+  return page;
+};
+
+const creditExhibition = async(page) => {
+  const exhibitionSlug = page.urlname.split('/')[0];
+
+  const entries = await contentfulConnection.getEntries({
+    'content_type': 'exhibitionPage',
+    'locale': 'en-GB',
+    'fields.identifier': exhibitionSlug,
+    'limit': 1
+  });
+  const entry = entries.items[0];
+
+  if (!entry.fields.credits) entry.fields.credits = {};
+  // TODO: add localisation handling
+  entry.fields.credits['en-GB'] = page.credits;
+  const updated = await entry.update();
+  await updated.publish();
 };
 
 const run = async() => {
+  contentfulConnection = await contentfulClient.connect();
   await pgClient.connect();
 
   const result = await pgClient.query(pagesSql);
-  const pages = await pagesFromRows(result.rows);
 
-  console.log(JSON.stringify(pages, null, 2));
+  for (const row of result.rows) {
+    console.log(row.urlname, row['language_code']);
+    const page = await pageFromRow(row);
+    await creditExhibition(page);
+    // console.log(JSON.stringify(page, null, 2));
+  }
 
   await pgClient.end();
 };
