@@ -45,7 +45,7 @@ const migrateImage = async(picture) => {
   try {
     const asset = await environment.createAsset({
       fields: {
-        title: wrapLocale(picture.title, null, maxLengthShort),
+        title: wrapLocale(picture.title || picture.image_file_name, null, maxLengthShort),
         file: wrapLocale({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
           fileName: picture.image_file_name,
@@ -76,8 +76,8 @@ const migrateImages = async() => {
     INNER JOIN alchemy_pictures ap ON aep.picture_id=ap.id
     INNER JOIN alchemy_contents ac ON ac.essence_id=aep.id AND ac.essence_type='Alchemy::EssencePicture'
     INNER JOIN alchemy_elements ae ON ac.element_id=ae.id
-    INNER JOIN alchemy_contents acc ON acc.element_id=ae.id AND acc.essence_type='Alchemy::EssenceCredit'
-    INNER JOIN alchemy_essence_credits aec ON acc.essence_id=aec.id
+    LEFT JOIN alchemy_contents acc ON acc.element_id=ae.id AND acc.essence_type='Alchemy::EssenceCredit'
+    LEFT JOIN alchemy_essence_credits aec ON acc.essence_id=aec.id
   `);
   await pgClient.end();
 
