@@ -29,6 +29,22 @@ const pagesSql = `
     ap.language_code
 `;
 
+const localeMap = {
+  de: 'de-DE',
+  en: 'en-GB',
+  'en-gb': 'en-GB',
+  es: 'es-ES',
+  fi: 'fi-FI',
+  fr: 'fr-FR',
+  it: 'it-IT',
+  lv: 'lv-LV',
+  nl: 'nl-NL',
+  pl: 'pl-PL',
+  ro: 'ro-RO',
+  sl: 'sl-SI',
+  sv: 'sv-SE'
+};
+
 const fetchEssence = async(type, id) => {
   let sql;
 
@@ -77,7 +93,7 @@ const creditsFromEssences = async(essences) => {
   for (const essence of essences) {
     switch (essence.type) {
       case 'Alchemy::EssenceText':
-        credits = credits + await turndownService.turndown(`<h2>${essence.value}</h2>`);
+        credits = credits + `## ${essence.value}`;
         break;
       case 'Alchemy::EssencePicture':
         credits = credits + await contentfulAssetForAlchemyPicture(essence.value);
@@ -92,37 +108,13 @@ const creditsFromEssences = async(essences) => {
   return credits;
 };
 
-const pageFromRow = async(row) => {
+const creditsFromRow = async(rowEssences) => {
   const essences = [];
-  for (const essence of row.essences) {
+  for (const essence of rowEssences) {
     const essenceData = await fetchEssence(essence.type, essence.id);
     if (essenceData) essences.push(essenceData);
   }
-  const credits = await creditsFromEssences(essences);
-
-  const page = {
-    urlname: row.urlname,
-    'language_code': row['language_code'],
-    credits
-  };
-
-  return page;
-};
-
-const localeMap = {
-  de: 'de-DE',
-  en: 'en-GB',
-  'en-gb': 'en-GB',
-  es: 'es-ES',
-  fi: 'fi-FI',
-  fr: 'fr-FR',
-  it: 'it-IT',
-  lv: 'lv-LV',
-  nl: 'nl-NL',
-  pl: 'pl-PL',
-  ro: 'ro-RO',
-  sl: 'sl-SI',
-  sv: 'sv-SE'
+  return await creditsFromEssences(essences);
 };
 
 const creditExhibition = async(urlname, rows) => {
@@ -140,9 +132,10 @@ const creditExhibition = async(urlname, rows) => {
   if (!entry.fields.credits) entry.fields.credits = {};
 
   for (locale in rows) {
-    console.log(`- ${locale}`);
-    const page = await pageFromRow(rows[locale]);
-    entry.fields.credits[localeMap[locale]] = page.credits;
+    const contentfulLocale = localeMap[locale];
+    console.log(`- ${locale} => ${contentfulLocale}`);
+    const credits = await creditsFromRow(rows[locale]);
+    entry.fields.credits[contentfulLocale] = credits;
   }
 
   const updated = await entry.update();
@@ -158,7 +151,7 @@ const run = async() => {
   const groupedRows = {};
   for (const row of result.rows) {
     if (!groupedRows[row.urlname]) groupedRows[row.urlname] = {};
-    groupedRows[row.urlname][row['language_code']] = row;
+    groupedRows[row.urlname][row['language_code']] = row.essences;
   }
 
   for (const urlname in groupedRows) {
