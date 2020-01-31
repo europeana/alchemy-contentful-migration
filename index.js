@@ -150,13 +150,11 @@ const deepDebug = (ob) => {
     let cached = richTextCache[sid];
 
     if(cached){
-      console.log();
       console.log(count + ' of ' + hp.length + ' (sys.id = ' + sid + ')');
 
       locs.forEach((loc) => {
         console.log(loc + ': (headline) ' + cached.fields.headline[loc]);
         console.log(loc + ': (text) ' + cached.fields.text[loc]);
-        console.log();
       })
     }
     count ++;
@@ -231,7 +229,7 @@ const queryBoolean = async(id) => {
   return res.rows && res.rows.length > 0 ? res.rows[0] : null;
 };
 
-const queryExhibitions = async(queryLocale, id, intro) => {
+const queryExhibitions = async(queryLocale, id, intro, crossLocale) => {
 
   const select = id ? '*, alchemy_elements.name as element_name' : 'distinct(parent_id)';
   const order = id ? 'alchemy_pages.lft, alchemy_elements.id, alchemy_elements.position, alchemy_contents.position' : 'parent_id asc';
@@ -239,10 +237,9 @@ const queryExhibitions = async(queryLocale, id, intro) => {
   //const order = id ? 'alchemy_elements.id, alchemy_pages.id, alchemy_elements.position' : 'parent_id asc';
   const condition = id ?
       intro ?
-          `and alchemy_pages.id = ${id}
-       and alchemy_elements.name = 'intro'`
-          :
-          `and parent_id = ${id}`
+        crossLocale ? `and alchemy_elements.name = 'intro'`
+          : `and alchemy_pages.id = ${id} and alchemy_elements.name = 'intro'`
+        : `and parent_id = ${id}`
       : '';
 
   let query = `
@@ -355,7 +352,7 @@ const queryTitle = async (urlName, locale) => {
 
   if(res.rows && res.rows.length > 0){
     if(res.rows > 1){
-      console.log(query)
+      console.log(`query = ${query}`)
       throw new Error('>1')
     }
     let result = await queryText(res.rows[0].essence_id);
@@ -539,7 +536,6 @@ const processTextRow = async (row, cObject, isIntro, localeData) => {
     const splitText = parseHeader(text);
     if (splitText) {
       cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
-      console.log(JSON.stringify(localeData));
     }
   }
   else if(cObject.hasPart && !isIntro){
@@ -550,7 +546,7 @@ const processTextRow = async (row, cObject, isIntro, localeData) => {
     let headlineOb = wrapLocale(rtHeadline, null, maxLengthShort);
     let textOb = wrapLocale(turndownService.turndown(rtText), null, maxLengthLong);
 
-    // payload too big with locales - initial save neessary
+    // payload too big with locales - initial save necessary
 
     let rt = await writeEntry('richText', { fields: {
       headline: headlineOb,
@@ -581,6 +577,7 @@ const processTextRow = async (row, cObject, isIntro, localeData) => {
           }
         }
       }
+      console.log('complete RT:\n\t' + JSON.stringify(rt));
       // await rt.publish();
     }
   }
@@ -635,7 +632,7 @@ const processRows = async (rows, locales, intro) => {
         await processImageRow(row, cObject, cCache, intro, pc);
       }
     }
-    else if(row.essence_type.match(/Alchemy::Essence(Richt)?(T)?ext/)){
+    else if(row.essence_type.match(/Alchemy::EssenceRichtext/)){
 
       let rowInAllLocales = {};
 
@@ -660,9 +657,7 @@ const processRows = async (rows, locales, intro) => {
   let entryData   = Object.assign(cObject, idData);
 
   await setTitleData(entryData, urlName, locales, intro);
-
   let exhibitionObject = await writeEntry(entryType, { fields: entryData });
-
   return exhibitionObject;
 };
 
@@ -758,7 +753,7 @@ const runAll = async () =>  {
   // (2)- uncomment this single line
   //await smartDelete('exhibitionId');
 
-  //console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
+  console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
 
   await pgClient.connect();
   let resArr = await queryExhibitions('en');
@@ -788,7 +783,7 @@ const runAll = async () =>  {
 
 
 // Gets translations for urlName / validates against English version
-const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro) => {
+const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro, crossLocale) => {
 
   if(!runTranslations){
     return null;
@@ -803,7 +798,10 @@ const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro) => {
   // get variant rows / group into chapters
   while(variant = variants.pop()){
 
-    const localeRows = await queryExhibitions(variant.language_code, variant.exhibition_id, isIntro);
+    const localeRows = await queryExhibitions(variant.language_code, variant.exhibition_id, isIntro, crossLocale);
+    if(crossLocale){
+      localeRows.rows = localeRows.rows.filter((lr) => lr.urlname === urlName);
+    }
 
     let localeRowsGrouped = groupChapters(localeRows.rows);
     let groupUrlNames = Object.keys(localeRowsGrouped);
@@ -880,7 +878,7 @@ const run = async(exhibitionId) =>  {
     while(url = urlNames.pop()){
       let chapterRef = await processRows(
         chapterRows[url],
-        localeRowsByUrlname[url]
+        localeRowsByUrlname ? localeRowsByUrlname[url] : {}
       );
       chapterRefs.push(chapterRef);
       console.log(`made chapter ${chapterRefs.length} (${url}) using ${chapterRows[url].length} rows`);
@@ -892,10 +890,19 @@ const run = async(exhibitionId) =>  {
 
       console.log(`${introRows.rows.length} intros found for ${exhibitionId}`);
 
+      let introUrl = urlName.split('/').slice(0)[0];
       let chapterIntroRows = groupChapters(introRows.rows);
-      let groupedChapterIntros = getOrganisedLocaleRows(urlName.split('/').slice(0)[0], chapterIntroRows, true);
 
-      let intro = await processRows(introRows.rows, groupedChapterIntros, true);
+      let groupedChapterIntros = {};
+      if(runTranslations){
+        groupedChapterIntros = await getOrganisedLocaleRows(introUrl, chapterIntroRows, true, true);
+      }
+
+      let intro = await processRows(
+        chapterIntroRows[introUrl],
+        groupedChapterIntros[introUrl],
+        true
+      );
 
       intro.fields.datePublished = wrapLocale(pDate);
 
@@ -919,7 +926,7 @@ const run = async(exhibitionId) =>  {
         }
         //await intro.update();
         intro = await intro.update();
-        console.log(JSON.stringify(intro))
+        console.log('Intro: ' + JSON.stringify(intro))
         intro.publish();
       }
     }
