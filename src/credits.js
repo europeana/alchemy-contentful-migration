@@ -93,7 +93,7 @@ const creditsFromEssences = async(essences) => {
   for (const essence of essences) {
     switch (essence.type) {
       case 'Alchemy::EssenceText':
-        credits = credits + `## ${essence.value}`;
+        credits = credits + `## ${essence.value}\n`;
         break;
       case 'Alchemy::EssencePicture':
         credits = credits + await contentfulAssetForAlchemyPicture(essence.value);
