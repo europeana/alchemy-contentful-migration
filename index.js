@@ -469,16 +469,14 @@ const processTextRow = async (row, cObject, isIntro) => {
   }
   else if(row.name === 'body' && isIntro) {
     const splitText = parseHeader(text);
-    if (!cObject.description) {
-      if (splitText) {
-        if (isIntro) {
-          cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
-        } else {
-          cObject.description = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthShort);
-        }
-      } else {
-        cObject.description = wrapLocale(text, null, maxLengthShort);
+    if (splitText) {
+      if (isIntro) {
+        cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
+      } else if (!cObject.description) {
+        cObject.description = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthShort);
       }
+    } else {
+      cObject.description = wrapLocale(text, null, maxLengthShort);
     }
   }
   else if(cObject.hasPart){
