@@ -19,12 +19,13 @@ const pgClient = new Client({
 });
 
 const dryRun = false; // change to true for dryRun
-//const dryRun = true;
+const runTranslations = true;
 
 let space;
 let environment;
-
+let fakeId = 1;
 let imageSysIds;
+let richTextCache = {};
 
 const cEnvironmentId = process.env.cEnvironmentId;
 const cSpaceId = process.env.cSpaceId;
@@ -134,21 +135,52 @@ const parseHeader = (text) => {
   return ['Exhibition Content', text];
 };
 
+const deepDebug = (ob) => {
+  console.log('deepDebug disabled')
+  return;
+  //locs = ['en-GB', 'it-IT'];
+  locs = ['en-GB', localeLookup('nl')];
+  let hp = ob.fields.hasPart[locale];
+  console.log('debug this...' + hp.length);
+  let count = 0;
+
+  hp.forEach((part) => {
+
+    let sid = part.sys.id;
+    let cached = richTextCache[sid];
+
+    if(cached){
+      console.log();
+      console.log(count + ' of ' + hp.length + ' (sys.id = ' + sid + ')');
+
+      locs.forEach((loc) => {
+        console.log(loc + ': (headline) ' + cached.fields.headline[loc]);
+        console.log(loc + ': (text) ' + cached.fields.text[loc]);
+        console.log();
+      })
+    }
+    count ++;
+  });
+  console.log('END debug this...' + hp.length);
+}
+
 const mimicAsset = (data) => {
   let result = Object.assign(
     {
-      sys: { id: 1 }
+      sys: { id: fakeId },
+      update: async () => result,
+      publish: () => result
     }, data);
 
-  result.update = () => result;
-  result.publish = () => result;
-  return result;
+  fakeId ++;
+  return Object.assign({}, result);
 };
+
 
 const mimicValidate = (ob, shortTexts, longTexts) => {
   const test = (subject, arr, maxLen) => {
     arr.forEach((f) => {
-      if(subject.fields[f] && subject.fields[f][locale] && subject.fields[f][locale].length > maxLen){
+      if(subject.fields && subject.fields[f] && subject.fields[f][locale] && subject.fields[f][locale].length > maxLen){
         throw new Error(`invalid ${f} (length > ${maxLen})`);
       }
     });
@@ -159,8 +191,13 @@ const mimicValidate = (ob, shortTexts, longTexts) => {
 
 const writeEntry = async (type, entryData) => {
   if(dryRun){
+    if(type.match(/Exhibition[\s\S]*Page/)){
+      mimicValidate(mimicked, ['creator', 'headline', 'name', 'url'], ['description', 'text']);
+    }
+    if(type === 'exhibitionChapterPage'){
+      deepDebug(entryData);
+    }
     let mimicked = mimicAsset(entryData);
-    mimicValidate(mimicked, ['creator', 'headline', 'name', 'url'], ['description', 'text']);
     return mimicked;
   }
   else{
@@ -197,7 +234,8 @@ const queryBoolean = async(id) => {
 const queryExhibitions = async(queryLocale, id, intro) => {
 
   const select = id ? '*, alchemy_elements.name as element_name' : 'distinct(parent_id)';
-  const order = id ? 'alchemy_pages.lft, alchemy_elements.id, alchemy_elements.position' : 'parent_id asc';
+  const order = id ? 'alchemy_pages.lft, alchemy_elements.id, alchemy_elements.position, alchemy_contents.position' : 'parent_id asc';
+
   //const order = id ? 'alchemy_elements.id, alchemy_pages.id, alchemy_elements.position' : 'parent_id asc';
   const condition = id ?
       intro ?
@@ -215,11 +253,9 @@ const queryExhibitions = async(queryLocale, id, intro) => {
     where
       alchemy_elements.page_id = alchemy_pages.id
     and
-      public = true
-    and
-      alchemy_contents.name NOT IN ('button_text', 'text1', 'text2', 'partner_logo')
-    and
       alchemy_elements.id = alchemy_contents.element_id
+    and
+      public = true
     and
       alchemy_pages.depth = ${intro ? 2 : 3}
     and
@@ -227,11 +263,17 @@ const queryExhibitions = async(queryLocale, id, intro) => {
     and
       alchemy_pages.published_at IS NOT NULL
     and
+      alchemy_contents.name NOT IN ('button_text', 'text1', 'text2', 'partner_logo')
+    and
+      alchemy_contents.essence_type in ('Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceRichtext')
+    and
       language_code = '${queryLocale}'
     ${condition}
     order by ${order}`;
 
-  let res = await pgClient.query(query);
+  let res = await pgClient.query(query).catch((e) => {
+    console.log(`Error ${e} running query\n\t${query}`);
+  });
   return res;
 };
 
@@ -256,14 +298,16 @@ const queryExhibitionLangVariants = async (urlName) => {
     and
       alchemy_elements.public = true
     and
-      urlname LIKE '%${urlName}%'
+      alchemy_pages.urlname = '${urlName}'
     and
       language_code != 'en'
     order by
       urlname, alchemy_pages.id;`
 
-  let res = await pgClient.query(query);
-  return res.rows;
+  let res = await pgClient.query(query).catch((e) => {
+    console.log(`Error querying languaguage variants:\n\t${query}\n\t\t${e}\n`);
+  });
+  return res ? res.rows : null;
 };
 
 const queryHtml = async(id) => {
@@ -289,20 +333,40 @@ const queryLink = async(id) => {
   return res.rows && res.rows.length > 0 ? res.rows[0] : null;
 };
 
+const queryTitle = async (urlName, locale) => {
+  let query = `
+    select
+      ac.id, ae.id, ap.id, essence_id, *
+    from
+      alchemy_contents ac, alchemy_elements ae, alchemy_pages ap
+    where
+      ae.name = 'intro'
+    and
+      ae.id = ac.element_id
+    and
+      ae.page_id = ap.id
+    and
+      essence_type = 'Alchemy::EssenceText'
+    and
+      language_code = '${locale}'
+    and
+      urlname = '${urlName}'`;
+  let res = await pgClient.query(query);
+
+  if(res.rows && res.rows.length > 0){
+    if(res.rows > 1){
+      console.log(query)
+      throw new Error('>1')
+    }
+    let result = await queryText(res.rows[0].essence_id);
+    return result;
+  }
+  else{
+    return null;
+  }
+}
+
 const queryText = async(id, rich) => {
-  /*
-  let table = rich ? 'alchemy_essence_richtexts' : 'alchemy_essence_texts';
-  let select = rich ? `
-    REGEXP_REPLACE(REGEXP_REPLACE(stripped_body, '[\u0080-\u00ff]', '', 'g') , '\s+', '') as body`
-    : `REGEXP_REPLACE(REGEXP_REPLACE(body, '[\u0080-\u00ff]', '', 'g') , '\s+', '') as body`
-  let lengthCondition = rich ? `
-    length(REGEXP_REPLACE(REGEXP_REPLACE(stripped_body, '[\u0080-\u00ff]', '', 'g') , '\s+', '')) > 0`
-    : `length(REGEXP_REPLACE(REGEXP_REPLACE(body, '[\u0080-\u00ff]', '', 'g') , '\s+', '')) > 0`
-
-  let res = await pgClient.query(`SELECT ${select} FROM ${table} where id = ${id} and ${lengthCondition}`);
-  return res.rows && res.rows.length > 0 ? res.rows[0].body : null;
-  */
-
   let table = rich ? 'alchemy_essence_richtexts' : 'alchemy_essence_texts';
   let res = await pgClient.query(`SELECT * FROM ${table} where id = ${id} and length(body) > 0`);
 
@@ -445,10 +509,9 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
       err(`Image will not be saved: ${picture.image_file_uid}`);
     }
   }
-
 };
 
-const processTextRow = async (row, cObject, isIntro) => {
+const processTextRow = async (row, cObject, isIntro, localeData) => {
 
   let text = await queryText(row.essence_id, row.essence_type === 'Alchemy::EssenceRichtext');
 
@@ -457,82 +520,101 @@ const processTextRow = async (row, cObject, isIntro) => {
   }
   text = text.trim();
 
-  if(row.name === 'title'){
+  /*
+  if(row.name === 'title' && isIntro){
+    console.log('TODO: handle titles for intros');
     if(!cObject.name){
       cObject.name = wrapLocale(text, null, maxLengthShort);
     }
   }
-  else if(row.name === 'sub_title'){
+  else if(row.name === 'sub_title' && isIntro){
+    console.log('TODO: handle subtitle localisations');
     if(!cObject.headline){
       cObject.headline = wrapLocale(text, null, maxLengthShort);
     }
-  }
+  }*/
+  if(row.name === 'title'){}
+  else if(row.name === 'sub_title'){}
   else if(row.name === 'body' && isIntro) {
     const splitText = parseHeader(text);
-    if (!cObject.description) {
-      if (splitText) {
-        if (isIntro) {
-          cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
-        } else {
-          cObject.description = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthShort);
-        }
-      } else {
-        cObject.description = wrapLocale(text, null, maxLengthShort);
-      }
+    if (splitText) {
+      cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
+      console.log(JSON.stringify(localeData));
     }
   }
-  else if(cObject.hasPart){
-    if(!isIntro){
-      const splitText = parseHeader(text);
-      rt = await writeEntry('richText', { fields:
-            splitText ? {
-              headline: wrapLocale(splitText[0], null, maxLengthShort),
-              text: wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong)
-            } : {
-              headline: wrapLocale(`Exhibition content for ${row.title}`, null, maxLengthShort),
-              text: wrapLocale(turndownService.turndown(text), null, maxLengthLong)
-            }
-      });
-      cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
+  else if(cObject.hasPart && !isIntro){
+
+    const splitText = parseHeader(text);
+    const rtHeadline = splitText ? splitText[0] : `Exhibition content for ${row.title}`;
+    const rtText = splitText ? splitText[1] : text;
+    let headlineOb = wrapLocale(rtHeadline, null, maxLengthShort);
+    let textOb = wrapLocale(turndownService.turndown(rtText), null, maxLengthLong);
+
+    // payload too big with locales - initial save neessary
+
+    let rt = await writeEntry('richText', { fields: {
+      headline: headlineOb,
+      text: textOb
+      }});
+    rt = await rt.publish();
+
+    cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
+    richTextCache[rt.sys.id] = rt;
+
+    if(localeData){
+      let locs = Object.keys(localeData);
+
+      while(loc = locs.pop()){
+
+        let tData = localeData[loc];
+        if(tData){
+          const tText = await queryText(tData.essence_id, tData.essence_type === 'Alchemy::EssenceRichtext');
+          if(tText){
+            const splitTText = parseHeader(tText);
+            const ttHeadline = splitTText ? splitTText[0] : `Exhibition content for ${row.title}`;
+            const ttText = splitTText ? splitTText[1] : text;
+
+            rt.fields.headline[localeLookup(loc)] = ttHeadline.substr(0, maxLengthShort);
+            rt.fields.text[localeLookup(loc)] = turndownService.turndown(tText.substr(0, maxLengthLong));
+
+            rt = await rt.update();
+          }
+        }
+      }
+      // await rt.publish();
     }
   }
 };
 
+const setTitleData = async (cObject, urlName, locales, intro) => {
+
+  let title = await queryTitle(urlName, 'en');
+  let titles = wrapLocale(title, null, maxLengthShort);
+
+  if(locales){
+    let locs = Object.keys(locales);
+    while(loc = locs.pop()){
+      let title = await queryTitle(urlName, loc);
+      titles[localeLookup(loc)] = title;
+    }
+  }
+  if(cObject.name){
+    throw new Error('setTitleData (intro: ' + intro + '): name already present: ' + JSON.stringify(cObject.name));
+  }
+  else{
+    cObject.name = titles;
+
+  }
+}
+
 const processRows = async (rows, locales, intro) => {
 
   let rowIndex = 0;
-  let objectReferences = [];
   let cObject  = getObjectBase();
   let cCache   = {};
   let rowTitle = rows[0].title.trim();
 
   while(rowIndex < rows.length){
-
-    let startNew = rows[rowIndex].title.trim() !== rowTitle;
-    let emptyData = JSON.stringify(cObject) === JSON.stringify(getObjectBase());
-    let endSection = startNew && !emptyData;
-
-    const fnEndSection = async () => {
-
-      console.log('Write Exhibition (' + rowTitle + ')');
-
-      let entryType   = intro ? 'exhibitionPage' : 'exhibitionChapterPage';
-      let urlRowIndex = Math.max(0, rowIndex-1);
-      let urlName     = rows[urlRowIndex].urlname.substr(0, maxLengthShort);
-      let idData      = { identifier: wrapLocale(urlName.split('/').pop()) };
-
-      let entryData = Object.assign(cObject, idData);
-      let exhibitionObject = await writeEntry(entryType, { fields: entryData });
-
-      objectReferences.push(exhibitionObject);
-
-      cObject = getObjectBase();
-      cCache = {};
-    }
-
-    if(endSection){
-      await fnEndSection();
-    }
 
     let row = rows[rowIndex];
     rowTitle = row.title.trim();
@@ -554,27 +636,44 @@ const processRows = async (rows, locales, intro) => {
       }
     }
     else if(row.essence_type.match(/Alchemy::Essence(Richt)?(T)?ext/)){
-      let rtName;
-      await processTextRow(row, cObject, intro);
-    }
 
-    if(rowIndex + 1 === rows.length){
-      await fnEndSection();
-    }
+      let rowInAllLocales = {};
 
+      if(locales){
+        Object.keys(locales).forEach((localeKey) => {
+          let locData = locales[localeKey];
+          rowInAllLocales[localeKey] = locData[rowIndex];
+        })
+      }
+      await processTextRow(row, cObject, intro, rowInAllLocales);
+
+    }
     rowIndex ++;
   }
-  return objectReferences;
+
+  console.log('Write Exhibition (' + rowTitle + ')');
+
+  let entryType   = intro ? 'exhibitionPage' : 'exhibitionChapterPage';
+  let urlRowIndex = Math.max(0, rowIndex-1);
+  let urlName     = rows[urlRowIndex].urlname.substr(0, maxLengthShort);
+  let idData      = { identifier: wrapLocale(urlName.split('/').pop()) };
+  let entryData   = Object.assign(cObject, idData);
+
+  await setTitleData(entryData, urlName, locales, intro);
+
+  let exhibitionObject = await writeEntry(entryType, { fields: entryData });
+
+  return exhibitionObject;
 };
 
 const smartDelete = async (itemId, recurseLevel = 0) =>  new Promise(async resolve => {
 
   let entry = await environment.getEntry(itemId).catch((e) => {
-    console.log(`couldn't load entry: ${itemId}`);
+    console.log(`smartDelete couldn't load entry: ${itemId}`);
   });
 
   if(!entry){
-    console.log(`no entry - return`);
+    console.log(`smartDelete no entry - return`);
     resolve();
     return;
   }
@@ -635,6 +734,14 @@ const getTimeString = (startTime, endTime, message) => {
   return `${minutes} minute${minutes == 1 ? '' : 's'} and ${seconds} second${seconds == 1 ? '' : 's'}`;
 };
 
+// group chapter rows by urlname / returns hash of arrays
+const groupChapters = function(allRows) {
+  return allRows.reduce(function(acc, current) {
+    (acc[current['urlname']] = acc[current['urlname']] || []).push(current);
+    return acc;
+  }, {});
+};
+
 const runAll = async () =>  {
 
   let startTime = new Date().getTime();
@@ -651,7 +758,7 @@ const runAll = async () =>  {
   // (2)- uncomment this single line
   //await smartDelete('exhibitionId');
 
-  console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
+  //console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
 
   await pgClient.connect();
   let resArr = await queryExhibitions('en');
@@ -660,7 +767,7 @@ const runAll = async () =>  {
   resArr = resArr.reverse();
 
   // (3)- override the items to process
-  //resArr = [612];
+  //resArr = [5];
 
   let completeCount = 0;
   let queueLength = resArr.length;
@@ -679,50 +786,116 @@ const runAll = async () =>  {
   await pgClient.end();
 };
 
+
+// Gets translations for urlName / validates against English version
+const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro) => {
+
+  if(!runTranslations){
+    return null;
+  }
+
+  localisedRowsByUrlName = {};
+
+  console.log('find variants...' + urlName)
+
+  variants = await queryExhibitionLangVariants(urlName);
+
+  // get variant rows / group into chapters
+  while(variant = variants.pop()){
+
+    const localeRows = await queryExhibitions(variant.language_code, variant.exhibition_id, isIntro);
+
+    let localeRowsGrouped = groupChapters(localeRows.rows);
+    let groupUrlNames = Object.keys(localeRowsGrouped);
+
+    if(!groupUrlNames){
+      continue;
+    }
+
+    // / iterate chapters / validate
+    while(groupUrlName = groupUrlNames.pop()){
+
+      if(!localisedRowsByUrlName[groupUrlName]){
+        localisedRowsByUrlName[groupUrlName] = {};
+      }
+      localisedRowsByUrlName[groupUrlName][variant.language_code] = [];
+
+      let chapterLocaleRows = localeRowsGrouped[groupUrlName];
+
+      /*
+      if(!chapterRows[groupUrlName]){
+        console.log('Translation exists for no English??? ' + groupUrlName);
+        continue;
+      }
+      if(!chapterLocaleRows){
+        console.log('No translations (' + variant.language_code + ') for ' + groupUrlName);
+        continue;
+      }
+      */
+      if(!chapterRows[groupUrlName]){
+        console.log('No chapter rows found for ' + groupUrlName);
+      }
+      else if(chapterRows[groupUrlName].length === chapterLocaleRows.length){
+
+        //const essenceTypes = ['Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceText', 'Alchemy::EssenceRichtext'];
+        const essenceTypes = ['Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceRichtext'];
+        const filterType = (type, list) => list.filter((r) => r.essence_type === type);
+
+        let valid = true;
+
+        essenceTypes.forEach((essenceType) => {
+          const localesFiltered = filterType(essenceType, chapterLocaleRows);
+          if(localesFiltered.length !== filterType(essenceType, chapterRows[groupUrlName]).length){
+            valid = false
+          }
+        });
+
+        if(valid){
+          localisedRowsByUrlName[groupUrlName][variant.language_code] = chapterLocaleRows;
+        }
+      }
+    }
+  }
+  return localisedRowsByUrlName;
+};
+
 const run = async(exhibitionId) =>  {
 
   const res = await queryExhibitions('en', exhibitionId);
 
   if(res.rows.length > 0){
 
-    var pDate = new Date(res.rows[0].public_on);
+    const pDate = new Date(res.rows[0].public_on);
+    const urlName = res.rows[0].urlname;
 
-    console.log(`\t...will process ${res.rows.length} rows for ${res.rows[0].urlname.split('/').reverse().pop()}\n\t > ${pDate.toLocaleDateString('en-GB')}\n`);
-
+    console.log(`\t...will process ${res.rows.length} rows for ${urlName.split('/').slice(0)[0]}\n\t > ${pDate.toLocaleDateString('en-GB')}\n`);
 
     /* locales / experimental */
     let locales  = {};
-    /*
-    let variants = await queryExhibitionLangVariants(res.rows[0].urlname);
+    let chapterRows = groupChapters(res.rows);
+    let urlNames = Object.keys(chapterRows).reverse();
+    let chapterRefs = [];
+    let localeRowsByUrlname = await getOrganisedLocaleRows(urlName, chapterRows);
 
-    if(variants.length > 0){
-
-      console.log(`\tVariant${variants.length == 1 ? '' : 's' } of "${res.rows[0].urlname.split('/').reverse().pop()}":\n`);
-
-      await Promise.all(
-        variants.map(async (r) => {
-          return new Promise(async resolve => {
-            const localeRows = await queryExhibitions(r.language_code, r.exhibition_id);
-            locales[r.language_code] = localeRows.rows;
-            resolve(`\t - [${r.language_code}] (${localeRows.rows.length} rows):\t${localeRows.rows[0].title.trim()}`);
-          })
-        })
-      ).then((debug) => {
-        console.log(`\tVariant${variants.length == 1 ? '' : 's' } of "${res.rows[0].title.trim()}":\n${debug.join('\n')}`);
-      });
+    while(url = urlNames.pop()){
+      let chapterRef = await processRows(
+        chapterRows[url],
+        localeRowsByUrlname[url]
+      );
+      chapterRefs.push(chapterRef);
+      console.log(`made chapter ${chapterRefs.length} (${url}) using ${chapterRows[url].length} rows`);
     }
-    */
-    /* end locales / experimental */
 
-    let chapterRefs = await processRows(res.rows, locales);
     let introRows = await queryExhibitions('en', exhibitionId, true);
 
     if(introRows.rows.length > 0){
 
       console.log(`${introRows.rows.length} intros found for ${exhibitionId}`);
 
-      let intro = await processRows(introRows.rows, null, true);
-      intro = intro[0];
+      let chapterIntroRows = groupChapters(introRows.rows);
+      let groupedChapterIntros = getOrganisedLocaleRows(urlName.split('/').slice(0)[0], chapterIntroRows, true);
+
+      let intro = await processRows(introRows.rows, groupedChapterIntros, true);
 
       intro.fields.datePublished = wrapLocale(pDate);
 
@@ -746,6 +919,7 @@ const run = async(exhibitionId) =>  {
         }
         //await intro.update();
         intro = await intro.update();
+        console.log(JSON.stringify(intro))
         intro.publish();
       }
     }
