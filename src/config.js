@@ -31,5 +31,6 @@ module.exports = {
   pgClient,
   contentfulClient,
   turndownService,
+  imageLogPath,
   imageLog
 };

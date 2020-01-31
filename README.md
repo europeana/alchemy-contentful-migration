@@ -32,7 +32,7 @@ and the contentful variables:
 
 To migrate just the images from Alchemy into Contentful as assets, run:
 ```
-node images.js
+npm run images
 ```
 
 It will maintain a log of the images previously migrated in tmp/images.json and

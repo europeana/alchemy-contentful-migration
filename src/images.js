@@ -1,32 +1,12 @@
 require('dotenv').config();
+const { imageLog, imageLogPath, pgClient, contentfulClient } = require('./config');
 
-const contentful = require('contentful-management');
-const { Client } = require('pg');
 const fs = require('fs');
 const imageServer = process.env.alchemyImageServer;
 const locale = 'en-GB';
-
-const imageLog = './tmp/images.json';
-const images = fs.existsSync(imageLog) ? require(imageLog) : {};
-
 const maxLengthShort = 255;
 
-const pgClient = new Client({
-  user: process.env.pgUser,
-  host: process.env.pgHost,
-  database: process.env.pgDatabase,
-  port: process.env.pgPort
-});
-
-let space;
-let environment;
-
-const cEnvironmentId = process.env.cEnvironmentId;
-const cSpaceId = process.env.cSpaceId;
-
-const cClient = contentful.createClient({
-  accessToken: process.env.cAccessToken
-});
+let contentfulConnection;
 
 const wrapLocale = (val, l, max) => {
   return {
@@ -37,13 +17,13 @@ const wrapLocale = (val, l, max) => {
 const migrateImage = async(picture) => {
   const uid = encodeURIComponent(picture.image_file_uid);
 
-  if (images[uid]) {
-    console.log(`[EXISTS] ${uid}: ${images[uid]}`);
+  if (imageLog[uid]) {
+    console.log(`[EXISTS] ${uid}: ${imageLog[uid]}`);
     return;
   }
 
   try {
-    const asset = await environment.createAsset({
+    const asset = await contentfulConnection.createAsset({
       fields: {
         title: wrapLocale(picture.title || picture.image_file_name, null, maxLengthShort),
         file: wrapLocale({
@@ -56,8 +36,8 @@ const migrateImage = async(picture) => {
 
     const processedAsset = await asset.processForAllLocales();
     await processedAsset.publish();
-    images[uid] = asset.sys.id;
-    fs.writeFileSync(imageLog, JSON.stringify(images, null, 2));
+    imageLog[uid] = asset.sys.id;
+    fs.writeFileSync(imageLogPath, JSON.stringify(imageLog, null, 2));
 
     console.log(`[NEW] ${uid}: ${asset.sys.id}`);
   } catch (e) {
@@ -66,8 +46,7 @@ const migrateImage = async(picture) => {
 };
 
 const migrateImages = async() => {
-  space = await cClient.getSpace(cSpaceId);
-  environment = await space.getEnvironment(cEnvironmentId);
+  contentfulConnection = await contentfulClient.connect();
 
   await pgClient.connect();
   const res = await pgClient.query(`

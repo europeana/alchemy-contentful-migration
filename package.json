@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "credits": "node src/credits.js",
+    "images": "node src/images.js",
     "lint": "eslint --ext .js --ignore-path .gitignore .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
