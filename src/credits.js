@@ -131,7 +131,7 @@ const creditExhibition = async(urlname, rows) => {
 
   if (!entry.fields.credits) entry.fields.credits = {};
 
-  for (locale in rows) {
+  for (const locale in rows) {
     const contentfulLocale = localeMap[locale];
     console.log(`- ${locale} => ${contentfulLocale}`);
     const credits = await creditsFromRow(rows[locale]);
