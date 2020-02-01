@@ -20,12 +20,13 @@ const pgClient = new Client({
 
 const dryRun = false; // change to true for dryRun
 const runTranslations = true;
+const runTranslationsAllowsReordering = true;
 
 let space;
 let environment;
 let fakeId = 1;
 let imageSysIds;
-let richTextCache = {};
+let entryCache = {};
 
 const cEnvironmentId = process.env.cEnvironmentId;
 const cSpaceId = process.env.cSpaceId;
@@ -128,52 +129,78 @@ const parseHeader = (text) => {
 
   if(h1 && h1.length){
     let headerText = h1.text();
-    // h1.remove();
-    //return [headerText, $('body').children().text()];
     return [headerText, text];
   }
   return ['Exhibition Content', text];
 };
 
-const deepDebug = (ob) => {
-  console.log('deepDebug disabled')
-  return;
-  //locs = ['en-GB', 'it-IT'];
-  locs = ['en-GB', localeLookup('nl')];
-  let hp = ob.fields.hasPart[locale];
-  console.log('debug this...' + hp.length);
-  let count = 0;
-
-  hp.forEach((part) => {
-
-    let sid = part.sys.id;
-    let cached = richTextCache[sid];
-
-    if(cached){
-      console.log(count + ' of ' + hp.length + ' (sys.id = ' + sid + ')');
-
-      locs.forEach((loc) => {
-        console.log(loc + ': (headline) ' + cached.fields.headline[loc]);
-        console.log(loc + ': (text) ' + cached.fields.text[loc]);
-      })
-    }
-    count ++;
-  });
-  console.log('END debug this...' + hp.length);
-}
-
-const mimicAsset = (data) => {
-  let result = Object.assign(
-    {
-      sys: { id: fakeId },
-      update: async () => result,
-      publish: () => result
-    }, data);
-
+function FakeEntry(type, fieldData){
   fakeId ++;
-  return Object.assign({}, result);
-};
+  this.fields = fieldData.fields;
 
+  const debugField = (fName, indented) => {
+    const pad = indented ? 10 * indented : 10;
+    const maxLineLength = 80;
+    const f = this.fields[fName];
+    let res = '';
+    if(f){
+      if(fName === 'hasPart'){
+        console.log(`${''.padEnd(pad)}${fName} (${this.fields.hasPart[locale].length})`);
+        this.fields.hasPart[locale].forEach((part) => entryCache[part.sys.id].debug(indented + 1));
+      }
+      else if(fName === 'image'){
+        console.log(`${''.padEnd(pad)}${'asset'.padEnd(pad)}\t${f[locale].sys.id}`);
+      }
+      else if(fName === 'primaryImageOfPage'){
+        console.log(`${''.padEnd(pad)}${fName}`);
+        if(this.fields.primaryImageOfPage){
+          entryCache[this.fields.primaryImageOfPage[locale].sys.id].debug(indented + 2);
+        }
+      }
+      else if(type === 'imageComparison'){
+        console.log(`${''.padEnd(pad)}${fName}`);
+        this.fields.hasPart[locale].forEach((part) => entryCache[part.sys.id].debug(indented + 1));
+      }
+      else{
+        res = fName.padEnd(pad);
+        const keys = Object.keys(f);
+        keys.forEach((key) => {
+          var suffix = f[key].length > maxLineLength ? '...' : '';
+          res += '\n'.padEnd(pad * 2) + key + '\t' + `${f[key]}`.replace(/\n/g, '').substr(0, maxLineLength) + suffix;
+        });
+      }
+    }
+    else{
+      res += '\n'.padEnd(pad * 2) + 'undefined';
+    }
+    return ''.padEnd(pad) + res;
+  };
+
+  this.sys = {
+    id: fakeId,
+    version: 1
+  };
+  this.update = () => {
+    this.sys.version += 1;
+    //console.log(`update ${type} [id: ${this.sys.id}]`);
+    // this.debug();
+    return this;
+  };
+  this.publish = () => {
+    this.sys.version += 1;
+    return this;
+  };
+  this.validate = () => {
+    console.log(`validate ${this.sys.id}...`);
+  };
+  this.debug = (indented = 0) => {
+    console.log((indented ? ''.padEnd(10 * indented) : 'DBUG: ') + `${type} [id: ${this.sys.id}]`);
+    Object.keys(this.fields).forEach((f) => {
+      console.log(debugField(f, indented));
+    });
+  };
+  entryCache[this.sys.id] = this;
+};
 
 const mimicValidate = (ob, shortTexts, longTexts) => {
   const test = (subject, arr, maxLen) => {
@@ -192,11 +219,7 @@ const writeEntry = async (type, entryData) => {
     if(type.match(/Exhibition[\s\S]*Page/)){
       mimicValidate(mimicked, ['creator', 'headline', 'name', 'url'], ['description', 'text']);
     }
-    if(type === 'exhibitionChapterPage'){
-      deepDebug(entryData);
-    }
-    let mimicked = mimicAsset(entryData);
-    return mimicked;
+    return new FakeEntry(type, entryData);
   }
   else{
     let entry;
@@ -262,7 +285,7 @@ const queryExhibitions = async(queryLocale, id, intro, crossLocale) => {
     and
       alchemy_contents.name NOT IN ('button_text', 'text1', 'text2', 'partner_logo')
     and
-      alchemy_contents.essence_type in ('Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceRichtext')
+      alchemy_contents.essence_type in ('Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceRichtext', 'Alchemy::EssenceCredit')
     and
       language_code = '${queryLocale}'
     ${condition}
@@ -351,10 +374,6 @@ const queryTitle = async (urlName, locale) => {
   let res = await pgClient.query(query);
 
   if(res.rows && res.rows.length > 0){
-    if(res.rows > 1){
-      console.log(`query = ${query}`)
-      throw new Error('>1')
-    }
     let result = await queryText(res.rows[0].essence_id);
     return result;
   }
@@ -366,7 +385,6 @@ const queryTitle = async (urlName, locale) => {
 const queryText = async(id, rich) => {
   let table = rich ? 'alchemy_essence_richtexts' : 'alchemy_essence_texts';
   let res = await pgClient.query(`SELECT * FROM ${table} where id = ${id} and length(body) > 0`);
-
   return res.rows && res.rows.length > 0 ? res.rows[0].body : null;
 };
 
@@ -472,8 +490,10 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
 
   if(row.element_name === 'image_compare'){
     if(cache.imageCompare){
-      let icTitle = [cache.imageCompare.fields.name[locale],
-        imageObject.fields.name[locale]].join(' / ');
+      let icTitle = [
+        cache.imageCompare.fields.name[locale],
+        imageObject.fields.name[locale]
+      ].join(' / ');
 
       let imageCompare = await writeEntry('imageComparison', {
         fields: {
@@ -485,7 +505,7 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
         }
       });
       cObject.hasPart[locale].push(
-          getEntryLink(imageCompare.sys.id)
+        getEntryLink(imageCompare.sys.id)
       );
       cache.imageCompare = false;
     }
@@ -546,16 +566,12 @@ const processTextRow = async (row, cObject, isIntro, localeData) => {
     let headlineOb = wrapLocale(rtHeadline, null, maxLengthShort);
     let textOb = wrapLocale(turndownService.turndown(rtText), null, maxLengthLong);
 
-    // payload too big with locales - initial save necessary
-
-    let rt = await writeEntry('richText', { fields: {
-      headline: headlineOb,
-      text: textOb
-      }});
-    rt = await rt.publish();
-
-    cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
-    richTextCache[rt.sys.id] = rt;
+    let rt = {
+      fields: {
+        headline: headlineOb,
+        text: textOb
+      }
+    }
 
     if(localeData){
       let locs = Object.keys(localeData);
@@ -572,13 +588,16 @@ const processTextRow = async (row, cObject, isIntro, localeData) => {
 
             rt.fields.headline[localeLookup(loc)] = ttHeadline.substr(0, maxLengthShort);
             rt.fields.text[localeLookup(loc)] = turndownService.turndown(tText.substr(0, maxLengthLong));
-
-            rt = await rt.update();
           }
         }
       }
-      console.log('complete RT:\n\t' + JSON.stringify(rt));
-      // await rt.publish();
+    }
+
+    let savedRT = await writeEntry('richText', rt);
+
+    cObject.hasPart[locale].push(getEntryLink(savedRT.sys.id));
+    if(dryRun){
+      entryCache[savedRT.sys.id] = savedRT;
     }
   }
 };
@@ -600,7 +619,6 @@ const setTitleData = async (cObject, urlName, locales, intro) => {
   }
   else{
     cObject.name = titles;
-
   }
 }
 
@@ -625,17 +643,13 @@ const processRows = async (rows, locales, intro) => {
       await processEmbedRow(row, cObject, `Exhibition content for ${rowTitle}`);
     }
     else if(row.essence_type === 'Alchemy::EssencePicture'){
-
       let pc = await getPictureCredit(row.essence_id, rows, row.element_id, row.name === 'image_2');
-
       if(pc[0] && pc[1]){
         await processImageRow(row, cObject, cCache, intro, pc);
       }
     }
     else if(row.essence_type.match(/Alchemy::EssenceRichtext/)){
-
       let rowInAllLocales = {};
-
       if(locales){
         Object.keys(locales).forEach((localeKey) => {
           let locData = locales[localeKey];
@@ -643,7 +657,6 @@ const processRows = async (rows, locales, intro) => {
         })
       }
       await processTextRow(row, cObject, intro, rowInAllLocales);
-
     }
     rowIndex ++;
   }
@@ -790,15 +803,13 @@ const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro, crossLocale
   }
 
   localisedRowsByUrlName = {};
-
-  console.log('find variants...' + urlName)
-
   variants = await queryExhibitionLangVariants(urlName);
 
   // get variant rows / group into chapters
   while(variant = variants.pop()){
 
     const localeRows = await queryExhibitions(variant.language_code, variant.exhibition_id, isIntro, crossLocale);
+
     if(crossLocale){
       localeRows.rows = localeRows.rows.filter((lr) => lr.urlname === urlName);
     }
@@ -820,24 +831,15 @@ const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro, crossLocale
 
       let chapterLocaleRows = localeRowsGrouped[groupUrlName];
 
-      /*
-      if(!chapterRows[groupUrlName]){
-        console.log('Translation exists for no English??? ' + groupUrlName);
-        continue;
-      }
-      if(!chapterLocaleRows){
-        console.log('No translations (' + variant.language_code + ') for ' + groupUrlName);
-        continue;
-      }
-      */
       if(!chapterRows[groupUrlName]){
         console.log('No chapter rows found for ' + groupUrlName);
       }
       else if(chapterRows[groupUrlName].length === chapterLocaleRows.length){
 
-        //const essenceTypes = ['Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceText', 'Alchemy::EssenceRichtext'];
-        const essenceTypes = ['Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceRichtext'];
+        const essenceTypes = ['Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceRichtext', 'Alchemy::EssenceCredit'];
         const filterType = (type, list) => list.filter((r) => r.essence_type === type);
+
+        const filteredLocales = {}; // store filtered types for re-ordering
 
         let valid = true;
 
@@ -846,10 +848,38 @@ const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro, crossLocale
           if(localesFiltered.length !== filterType(essenceType, chapterRows[groupUrlName]).length){
             valid = false
           }
+          else{
+            filteredLocales[essenceType] = localesFiltered;
+          }
         });
 
         if(valid){
-          localisedRowsByUrlName[groupUrlName][variant.language_code] = chapterLocaleRows;
+          // check essence ordering
+          chapterLocaleRows.forEach((r, i) => {
+            if(r.essence_type != chapterRows[groupUrlName][i].essence_type){
+              valid = false;
+            }
+          })
+          if(valid){
+            localisedRowsByUrlName[groupUrlName][variant.language_code] = chapterLocaleRows;
+            console.log(`\t\tfound translation ${variant.language_code} for ${groupUrlName}`);
+          }
+          else if(runTranslationsAllowsReordering){
+
+            chapterLocaleRowsOrdered = [];
+
+            // build order based on the English order
+            chapterRows[groupUrlName].forEach((en) => {
+              chapterLocaleRowsOrdered.push(filteredLocales[en.essence_type].pop());
+            });
+            chapterLocaleRowsOrdered.forEach((r, i) => {
+              if(r.essence_type != chapterRows[groupUrlName][i].essence_type){
+                throw new Error('Mismatch should now be impossible!');
+              }
+            });
+            localisedRowsByUrlName[groupUrlName][variant.language_code] = chapterLocaleRowsOrdered;
+            console.log(`\t\tfound translation ${variant.language_code} for ${groupUrlName}`);
+          }
         }
       }
     }
@@ -881,17 +911,24 @@ const run = async(exhibitionId) =>  {
         localeRowsByUrlname ? localeRowsByUrlname[url] : {}
       );
       chapterRefs.push(chapterRef);
-      console.log(`made chapter ${chapterRefs.length} (${url}) using ${chapterRows[url].length} rows`);
     }
 
     let introRows = await queryExhibitions('en', exhibitionId, true);
 
     if(introRows.rows.length > 0){
 
-      console.log(`${introRows.rows.length} intros found for ${exhibitionId}`);
 
       let introUrl = urlName.split('/').slice(0)[0];
       let chapterIntroRows = groupChapters(introRows.rows);
+
+      if(!chapterIntroRows[introUrl]){
+        const msg = `No intro rows found for ${exhibitionId} ${urlName}`;
+        console.log(msg);
+        err(msg);
+        return;
+      }
+
+      console.log(`${chapterIntroRows[introUrl].length} intros found for ${exhibitionId} ${urlName}`);
 
       let groupedChapterIntros = {};
       if(runTranslations){
@@ -910,12 +947,6 @@ const run = async(exhibitionId) =>  {
         intro.fields.hasPart = getObjectBase().hasPart;
       }
 
-      if(dryRun && !intro.update){
-        intro.update = () => {
-          mimicValidate(intro, ['name'], ['description']);
-        };
-      }
-
       if(chapterRefs && chapterRefs.length){
         chapterRefs.reverse();
 
@@ -924,10 +955,11 @@ const run = async(exhibitionId) =>  {
         while(chapter = chapterRefs.pop()){
           intro.fields.hasPart[locale].push(getEntryLink(chapter.sys.id));
         }
-        //await intro.update();
         intro = await intro.update();
-        console.log('Intro: ' + JSON.stringify(intro))
         intro.publish();
+        if(dryRun){
+          intro.debug();
+        }
       }
     }
   }
