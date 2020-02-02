@@ -165,8 +165,13 @@ function FakeEntry(type, fieldData){
         res = fName.padEnd(pad);
         const keys = Object.keys(f);
         keys.forEach((key) => {
-          var suffix = f[key].length > maxLineLength ? '...' : '';
-          res += '\n'.padEnd(pad * 2) + key + '\t' + `${f[key]}`.replace(/\n/g, '').substr(0, maxLineLength) + suffix;
+          if(!f[key]){
+            console.log(`\tmissing value for ${key}!\n\t\t${type} ${JSON.stringify(fieldData)}`);
+          }
+          else{
+            var suffix = f[key].length > maxLineLength ? '...' : '';
+            res += '\n'.padEnd(pad * 2) + key + '\t' + `${f[key]}`.replace(/\n/g, '').substr(0, maxLineLength) + suffix;
+          }
         });
       }
     }
@@ -253,11 +258,19 @@ const queryBoolean = async(id) => {
 };
 
 const queryExhibitions = async(queryLocale, id, intro, crossLocale) => {
+  const select = id ? `
+    alchemy_elements.position as element_position,
+    essence_id,
+    urlname,
+    meta_description,
+    essence_type,
+    published_at,
+    public_on,
+    alchemy_contents.name,
+    alchemy_elements.name as element_name,
+    alchemy_contents.position, title` : 'distinct(parent_id)';
+  const order = id ? 'alchemy_pages.lft, alchemy_elements.id, alchemy_elements.position' : 'parent_id asc';
 
-  const select = id ? '*, alchemy_elements.name as element_name' : 'distinct(parent_id)';
-  const order = id ? 'alchemy_pages.lft, alchemy_elements.id, alchemy_elements.position, alchemy_contents.position' : 'parent_id asc';
-
-  //const order = id ? 'alchemy_elements.id, alchemy_pages.id, alchemy_elements.position' : 'parent_id asc';
   const condition = id ?
       intro ?
         crossLocale ? `and alchemy_elements.name = 'intro'`
@@ -634,6 +647,14 @@ const processRows = async (rows, locales, intro) => {
     let row = rows[rowIndex];
     rowTitle = row.title.trim();
     let description = row.meta_description;
+    let rowInAllLocales = {};
+
+    if(locales){
+      Object.keys(locales).forEach((localeKey) => {
+        let locData = locales[localeKey];
+        rowInAllLocales[localeKey] = locData[rowIndex];
+      })
+    }
 
     if(description && !cObject.description){
       cObject.description = wrapLocale(description, null, maxLengthLong);
@@ -649,13 +670,6 @@ const processRows = async (rows, locales, intro) => {
       }
     }
     else if(row.essence_type.match(/Alchemy::EssenceRichtext/)){
-      let rowInAllLocales = {};
-      if(locales){
-        Object.keys(locales).forEach((localeKey) => {
-          let locData = locales[localeKey];
-          rowInAllLocales[localeKey] = locData[rowIndex];
-        })
-      }
       await processTextRow(row, cObject, intro, rowInAllLocales);
     }
     rowIndex ++;
@@ -766,6 +780,7 @@ const runAll = async () =>  {
   // (2)- uncomment this single line
   //await smartDelete('exhibitionId');
 
+
   console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
 
   await pgClient.connect();
@@ -836,6 +851,8 @@ const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro, crossLocale
       }
       else if(chapterRows[groupUrlName].length === chapterLocaleRows.length){
 
+        chapterRows[groupUrlName].sort((a, b)=>{ return b.element_position -  a.element_position });
+
         const essenceTypes = ['Alchemy::EssenceHtml', 'Alchemy::EssencePicture', 'Alchemy::EssenceRichtext', 'Alchemy::EssenceCredit'];
         const filterType = (type, list) => list.filter((r) => r.essence_type === type);
 
@@ -901,6 +918,7 @@ const run = async(exhibitionId) =>  {
     /* locales / experimental */
     let locales  = {};
     let chapterRows = groupChapters(res.rows);
+
     let urlNames = Object.keys(chapterRows).reverse();
     let chapterRefs = [];
     let localeRowsByUrlname = await getOrganisedLocaleRows(urlName, chapterRows);
@@ -917,7 +935,6 @@ const run = async(exhibitionId) =>  {
 
     if(introRows.rows.length > 0){
 
-
       let introUrl = urlName.split('/').slice(0)[0];
       let chapterIntroRows = groupChapters(introRows.rows);
 
@@ -928,7 +945,7 @@ const run = async(exhibitionId) =>  {
         return;
       }
 
-      console.log(`${chapterIntroRows[introUrl].length} intros found for ${exhibitionId} ${urlName}`);
+      console.log(`${chapterIntroRows[introUrl].length} intros found for ${exhibitionId} ${introUrl}`);
 
       let groupedChapterIntros = {};
       if(runTranslations){
