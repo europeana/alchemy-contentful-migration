@@ -366,14 +366,15 @@ const queryLink = async(id) => {
   return res.rows && res.rows.length > 0 ? res.rows[0] : null;
 };
 
-const queryTitle = async (urlName, locale) => {
+const queryTitle = async (urlName, locale, recurse) => {
+  let condition = recurse ? `ac.name = 'title' and ae.name != 'intro'` : `ae.name = 'intro'`;
   let query = `
     select
       ac.id, ae.id, ap.id, essence_id, *
     from
       alchemy_contents ac, alchemy_elements ae, alchemy_pages ap
     where
-      ae.name = 'intro'
+      ${condition}
     and
       ae.id = ac.element_id
     and
@@ -388,10 +389,12 @@ const queryTitle = async (urlName, locale) => {
 
   if(res.rows && res.rows.length > 0){
     let result = await queryText(res.rows[0].essence_id);
-    return result;
+    if(result && result.trim().length > 0){
+      return result;
+    }
   }
-  else{
-    return null;
+  if(!recurse){
+    return await queryTitle(urlName, locale, true);
   }
 }
 
@@ -418,24 +421,33 @@ const getImageCredit = async (essence_id) => {
   return resChecked;
 };
 
-const getPictureCredit = async(picEssenceId, rows, elementId, image_2) => {
+const findRowClosestByPosition = (x, arr) => {
+  var indexArr = arr.map(function(k) {
+    return Math.abs(k.element_position - x.element_position);
+  })
+  var min = Math.min.apply(Math, indexArr);
+  return arr[indexArr.indexOf(min)];
+};
+
+const getPictureCredit = async(picRow, rows) => {
+
   return new Promise(async resolveAll => {
     await Promise.all([
       new Promise(async (resolve) => {
-        let picture = await queryPicture(picEssenceId);
+        let picture = await queryPicture(picRow.essence_id);
         resolve(picture);
       }),
       new Promise(async (resolve) => {
         let essenceId;
         rows = rows.filter(row => {
-          return row.element_id === elementId
+          return row.element_id === picRow.element_id
               && row.essence_type === 'Alchemy::EssenceCredit'
-              && (image_2 ? row.name === 'image_2_credit' : row.name !== 'image_2_credit')
+              && (picRow.name === 'image_2' ? row.name === 'image_2_credit' : row.name !== 'image_2_credit')
         });
-
         if(rows.length > 0){
-          let credit = await getImageCredit(rows[0].essence_id);
-          resolve(credit);
+          let closestValue = findRowClosestByPosition(picRow, rows);
+          closestCredit = await getImageCredit(closestValue.essence_id);
+          resolve(closestCredit);
         }
         else{
           resolve(null)
@@ -451,12 +463,12 @@ const getPictureCredit = async(picEssenceId, rows, elementId, image_2) => {
 const processEmbedRow = async (row, cObject, name) => {
   let htmlSrc = await queryHtml(row.essence_id);
   if(htmlSrc){
-    const rt = await writeEntry('embed', { fields: { name: wrapLocale(name), embed: wrapLocale(htmlSrc) } });
-    cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
+    const embed = await writeEntry('embed', { fields: { name: wrapLocale(name), embed: wrapLocale(htmlSrc) } });
+    cObject.hasPart[locale].push(getEntryLink(embed.sys.id));
   }
 };
 
-const processImageRow = async (row, cObject, cache, isIntro, pc) => {
+const processImageRow = async (row, cObject, cache, isIntro, pc, localisedCreditTitle) => {
 
   let picture = pc[0];
   let credit = pc[1];
@@ -479,7 +491,7 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
 
   let imageObject = {
     fields: {
-      name: wrapLocale(credit.title, null, maxLengthShort),
+      name: runTranslations ? localisedCreditTitle : wrapLocale(credit.title, null, maxLengthShort),
       creator: wrapLocale(credit.author, null, maxLengthShort),
       image: {
         [locale]: {
@@ -550,22 +562,7 @@ const processTextRow = async (row, cObject, isIntro, localeData) => {
   }
   text = text.trim();
 
-  /*
-  if(row.name === 'title' && isIntro){
-    console.log('TODO: handle titles for intros');
-    if(!cObject.name){
-      cObject.name = wrapLocale(text, null, maxLengthShort);
-    }
-  }
-  else if(row.name === 'sub_title' && isIntro){
-    console.log('TODO: handle subtitle localisations');
-    if(!cObject.headline){
-      cObject.headline = wrapLocale(text, null, maxLengthShort);
-    }
-  }*/
-  if(row.name === 'title'){}
-  else if(row.name === 'sub_title'){}
-  else if(row.name === 'body' && isIntro) {
+  if(row.name === 'body' && isIntro) {
     const splitText = parseHeader(text);
     if (splitText) {
       cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
@@ -664,9 +661,27 @@ const processRows = async (rows, locales, intro) => {
       await processEmbedRow(row, cObject, `Exhibition content for ${rowTitle}`);
     }
     else if(row.essence_type === 'Alchemy::EssencePicture'){
-      let pc = await getPictureCredit(row.essence_id, rows, row.element_id, row.name === 'image_2');
+
+      let pc = await getPictureCredit(row, rows);
+
       if(pc[0] && pc[1]){
-        await processImageRow(row, cObject, cCache, intro, pc);
+
+        let localisedCreditTitle = wrapLocale(pc[1].title, null, maxLengthShort);
+        let langs = Object.keys(rowInAllLocales);
+
+        while(lang = langs.pop()){
+
+          if(rowInAllLocales[lang]){
+
+            let tPic = await getPictureCredit(rowInAllLocales[lang], locales[lang]);
+
+            if(tPic[1] && tPic[1].title){
+              localisedCreditTitle[localeLookup(lang)] = tPic[1].title.substr(0, maxLengthShort);
+            }
+          }
+        }
+
+        await processImageRow(row, cObject, cCache, intro, pc, localisedCreditTitle);
       }
     }
     else if(row.essence_type.match(/Alchemy::EssenceRichtext/)){
@@ -678,8 +693,7 @@ const processRows = async (rows, locales, intro) => {
   console.log('Write Exhibition (' + rowTitle + ')');
 
   let entryType   = intro ? 'exhibitionPage' : 'exhibitionChapterPage';
-  let urlRowIndex = Math.max(0, rowIndex-1);
-  let urlName     = rows[urlRowIndex].urlname.substr(0, maxLengthShort);
+  let urlName     = rows[0].urlname.substr(0, maxLengthShort);
   let idData      = { identifier: wrapLocale(urlName.split('/').pop()) };
   let entryData   = Object.assign(cObject, idData);
 
@@ -779,7 +793,6 @@ const runAll = async () =>  {
   }
   // (2)- uncomment this single line
   //await smartDelete('exhibitionId');
-
 
   console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
 
@@ -882,7 +895,6 @@ const getOrganisedLocaleRows = async (urlName, chapterRows, isIntro, crossLocale
             console.log(`\t\tfound translation ${variant.language_code} for ${groupUrlName}`);
           }
           else if(runTranslationsAllowsReordering){
-
             chapterLocaleRowsOrdered = [];
 
             // build order based on the English order
