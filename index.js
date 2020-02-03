@@ -18,9 +18,9 @@ const pgClient = new Client({
   port: process.env.pgPort
 });
 
-const dryRun = false; // change to true for dryRun
-const runTranslations = true;
-const runTranslationsAllowsReordering = true;
+const dryRun = parseInt(process.env.indexDryRun) === 1;
+const runTranslations = parseInt(process.env.indexRunTranslations) === 1;
+const runTranslationsAllowsReordering = parseInt(process.env.indexRunTranslationsAllowsReordering) === 1;
 
 let space;
 let environment;
@@ -784,33 +784,38 @@ const runAll = async () =>  {
 
   space       = await cClient.getSpace(cSpaceId);
   environment = await space.getEnvironment(cEnvironmentId);
-  let ex      = await environment.getEntries({ content_type: 'exhibitionPage'});
 
-  // TO WORK ON A SINGLE EXHIBITION:
-  // (1)- comment out this while loop
-  while(nextExhibition = ex.items.pop()){
+  let toDelete = process.env.indexSmartDeleteExhibitionContentfulSysId ?
+    { items: process.env.indexSmartDeleteExhibitionContentfulSysId.split(',').map((ex) => {
+      return { sys: { id: ex }}
+    }) }
+    : await environment.getEntries({ content_type: 'exhibitionPage'});
+
+  while(nextExhibition = toDelete.items.pop()){
     await smartDelete(nextExhibition.sys.id);
   }
-  // (2)- uncomment this single line
-  //await smartDelete('exhibitionId');
-
   console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
 
   await pgClient.connect();
-  let resArr = await queryExhibitions('en');
-  resArr = resArr.rows.map(x => x.parent_id);
-  console.log(resArr);
-  resArr = resArr.reverse();
 
-  // (3)- override the items to process
-  //resArr = [5];
+  let toWrite = [];
+
+  if(process.env.indexMigrateExhibitionPostgresIds){
+    toWrite = process.env.indexMigrateExhibitionPostgresIds.split(',');
+  }
+  else{
+    let resArr = await queryExhibitions('en');
+    resArr = resArr.rows.map(x => x.parent_id);
+    console.log(resArr);
+    toWrite = resArr.reverse();
+  }
 
   let completeCount = 0;
-  let queueLength = resArr.length;
+  let queueLength = toWrite.length;
 
-  while(nextExhibitionId = resArr.pop()){
+  while(nextExhibitionId = toWrite.pop()){
     await run(nextExhibitionId);
-    const pct = parseInt(100 - (resArr.length / queueLength) * 100);
+    const pct = parseInt(100 - (toWrite.length / queueLength) * 100);
     completeCount ++;
     console.log(`\n\t\t--> written exhibition ${nextExhibitionId}\t ${pct}%\t(${completeCount} of ${queueLength})`);
     console.log('\t\t--> running for ' + getTimeString(startTime, new Date().getTime()));
