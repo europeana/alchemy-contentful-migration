@@ -197,8 +197,7 @@ const queryBoolean = async(id) => {
 const queryExhibitions = async(queryLocale, id, intro) => {
 
   const select = id ? '*, alchemy_elements.name as element_name' : 'distinct(parent_id)';
-  const order = id ? 'alchemy_pages.lft, alchemy_elements.id, alchemy_elements.position' : 'parent_id asc';
-  //const order = id ? 'alchemy_elements.id, alchemy_pages.id, alchemy_elements.position' : 'parent_id asc';
+  const order = id ? 'alchemy_pages.lft, alchemy_elements.position' : 'parent_id asc';
   const condition = id ?
       intro ?
           `and alchemy_pages.id = ${id}
@@ -658,7 +657,7 @@ const runAll = async () =>  {
   resArr = resArr.reverse();
 
   // (3)- override the items to process
-  //resArr = [612];
+  // resArr = [612];
 
   let completeCount = 0;
   let queueLength = resArr.length;
