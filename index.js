@@ -587,12 +587,9 @@ const smartDelete = async (itemId, recurseLevel = 0) =>  new Promise(async resol
   };
 
   const cleanArr = async (arr) => {
-    await Promise.all(arr.map(async (deletableId) => {
-      return new Promise(async resolve => {
-        await smartDelete(deletableId, recurseLevel + 1);
-        resolve();
-      });
-    }));
+    for (const deletableId of arr) {
+      await smartDelete(deletableId, recurseLevel + 1);
+    }
   };
 
   const cleanArr2D = async (arr) => {
