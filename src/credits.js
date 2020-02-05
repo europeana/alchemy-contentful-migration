@@ -23,7 +23,7 @@ const pagesSql = `
     alchemy_pages ap
   where
     depth > 1
-    and urlname like '%/credits'
+    and page_layout = 'exhibition_credit_page'
   order by
     ap.urlname,
     ap.language_code
@@ -129,6 +129,7 @@ const creditExhibition = async(urlname, rows) => {
   });
   const entry = entries.items[0];
 
+  if (!entry) return;
   if (!entry.fields.credits) entry.fields.credits = {};
 
   for (const locale in rows) {
@@ -139,7 +140,11 @@ const creditExhibition = async(urlname, rows) => {
   }
 
   const updated = await entry.update();
-  await updated.publish();
+  try {
+    await updated.publish();
+  } catch (e) {
+    console.log(`Publish failed: `, e);
+  }
 };
 
 const run = async() => {
