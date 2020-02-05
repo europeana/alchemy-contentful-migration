@@ -1,31 +1,12 @@
 require('dotenv').config();
-const contentful = require('contentful-management');
-const { Client } = require('pg');
+const { pgClient, contentfulManagementClient } = require('./config');
+const { assetExists, assetIdForImage } = require('./assets');
 
-const { assetExists, assetIdForImage } = require('./src/assets');
-
-const imageServer = process.env.alchemyImageServer;
+const imageServer = process.env['ALCHEMY_IMAGE_SERVER'];
 const locale = 'en-GB';
-
 const maxLengthShort = 255;
-const maxLengthLong = 2000;
 
-const pgClient = new Client({
-  user: process.env.pgUser,
-  host: process.env.pgHost,
-  database: process.env.pgDatabase,
-  port: process.env.pgPort
-});
-
-let space;
-let environment;
-
-const cEnvironmentId = process.env.cEnvironmentId;
-const cSpaceId = process.env.cSpaceId;
-
-const cClient = contentful.createClient({
-  accessToken: process.env.cAccessToken
-});
+let contentfulEnvironment;
 
 const wrapLocale = (val, l, max) => {
   return {
@@ -37,16 +18,16 @@ const migrateImage = async(picture) => {
   const uid = picture.image_file_uid;
   const assetId = await assetIdForImage(uid);
 
-  const exists = await assetExists(environment, assetId);
+  const exists = await assetExists(assetId);
   if (exists) {
     console.log(`[EXISTS] ${uid}: ${assetId}`);
     return;
   }
 
   try {
-    const asset = await environment.createAssetWithId(assetId, {
+    const asset = await contentfulEnvironment.createAssetWithId(assetId, {
       fields: {
-        title: wrapLocale(picture.title, null, maxLengthShort),
+        title: wrapLocale(picture.title || picture.image_file_name, null, maxLengthShort),
         file: wrapLocale({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
           fileName: picture.image_file_name,
@@ -59,14 +40,13 @@ const migrateImage = async(picture) => {
     processedAsset.publish();
 
     console.log(`[NEW] ${uid}: ${asset.sys.id}`);
-  } catch(e) {
+  } catch (e) {
     console.log(`[ERROR] ${uid}: ${e}`);
   }
 };
 
 const migrateImages = async() => {
-  space = await cClient.getSpace(cSpaceId);
-  environment = await space.getEnvironment(cEnvironmentId);
+  contentfulEnvironment = await contentfulManagementClient.connect();
 
   await pgClient.connect();
   const res = await pgClient.query(`

@@ -4,16 +4,21 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "credits": "node src/credits.js",
+    "images": "node src/images.js",
+    "lint": "eslint --ext .js --ignore-path .gitignore .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "EUPL-1.2",
   "dependencies": {
     "cheerio": "^1.0.0-rc.3",
-    "contentful": "^7.13.0",
     "contentful-cli": "^1.2.5",
     "dotenv": "^8.2.0",
     "pg": "^7.17.1",
     "turndown": "^5.0.3"
+  },
+  "devDependencies": {
+    "contentful": "^7.13.1"
   }
 }

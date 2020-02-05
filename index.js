@@ -1,11 +1,11 @@
-require('dotenv').config();
-const contentful = require('contentful-management');
-const { Client } = require('pg');
+/* eslint-disable */
+
 const cheerio = require('cheerio');
 const fs = require('fs');
 const TurndownService = require('turndown');
 const turndownService = new TurndownService();
 
+const { pgClient, contentfulManagementClient } = require('./src/config');
 const { assetExists, assetIdForImage } = require('./src/assets');
 
 const errorLog = fs.createWriteStream('log.txt', {flags: 'w'});
@@ -14,25 +14,10 @@ const locale = 'en-GB';
 const maxLengthShort = 255;
 const maxLengthLong = 2000;
 
-const pgClient = new Client({
-  user: process.env.pgUser,
-  host: process.env.pgHost,
-  database: process.env.pgDatabase,
-  port: process.env.pgPort
-});
-
 const dryRun = false; // change to true for dryRun
 //const dryRun = true;
 
-let space;
 let environment;
-
-const cEnvironmentId = process.env.cEnvironmentId;
-const cSpaceId = process.env.cSpaceId;
-
-const cClient = contentful.createClient({
-  accessToken: process.env.cAccessToken
-});
 
 const err = (s) => {
   errorLog.write(`\n${s}`);
@@ -128,11 +113,8 @@ const parseHeader = (text) => {
 
   if(h1 && h1.length){
     let headerText = h1.text();
-    // h1.remove();
-    //return [headerText, $('body').children().text()];
     return [headerText, text];
   }
-  return ['Exhibition Content', text];
 };
 
 const mimicAsset = (data) => {
@@ -468,32 +450,52 @@ const processTextRow = async (row, cObject, isIntro) => {
     }
   }
   else if(row.name === 'body' && isIntro) {
+    let fieldValue = text;
+
     const splitText = parseHeader(text);
     if (splitText) {
-      if (isIntro) {
-        cObject.text = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong);
-      } else if (!cObject.description) {
-        cObject.description = wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthShort);
+      fieldValue = splitText[1];
+    }
+
+    if (isIntro) {
+      cObject.text = wrapLocale(turndownService.turndown(fieldValue), null, maxLengthLong);
+    } else if (!cObject.description) {
+      cObject.description = wrapLocale(turndownService.turndown(fieldValue), null, maxLengthShort);
+    }
+  }
+  else if(cObject.hasPart && !isIntro){
+    let headlineField = `Exhibition content for ${row.title}`;
+    let textField = text;
+
+    const splitText = parseHeader(text);
+    if (splitText) {
+      headlineField = splitText[0];
+      textField = splitText[1];
+    }
+
+    rt = await writeEntry('richText', {
+      fields: {
+        headline: wrapLocale(headlineField, null, maxLengthShort),
+        text: wrapLocale(markdownTextField(textField, row.name), null, maxLengthLong)
       }
-    } else {
-      cObject.description = wrapLocale(text, null, maxLengthShort);
-    }
+    });
+    cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
   }
-  else if(cObject.hasPart){
-    if(!isIntro){
-      const splitText = parseHeader(text);
-      rt = await writeEntry('richText', { fields:
-            splitText ? {
-              headline: wrapLocale(splitText[0], null, maxLengthShort),
-              text: wrapLocale(turndownService.turndown(splitText[1]), null, maxLengthLong)
-            } : {
-              headline: wrapLocale(`Exhibition content for ${row.title}`, null, maxLengthShort),
-              text: wrapLocale(turndownService.turndown(text), null, maxLengthLong)
-            }
-      });
-      cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
-    }
+};
+
+const markdownTextField = (text, name) => {
+  let markdown = turndownService.turndown(text);
+
+  switch (name) {
+    case 'quote':
+      markdown = `> ${markdown}`;
+      break;
+    case 'quotee':
+      markdown = `<cite>${markdown}</cite>`
+      break;
   }
+
+  return markdown;
 };
 
 const processRows = async (rows, locales, intro) => {
@@ -634,8 +636,7 @@ const runAll = async () =>  {
 
   let startTime = new Date().getTime();
 
-  space       = await cClient.getSpace(cSpaceId);
-  environment = await space.getEnvironment(cEnvironmentId);
+  environment = await contentfulManagementClient.connect();
   let ex      = await environment.getEntries({ content_type: 'exhibitionPage'});
 
   // TO WORK ON A SINGLE EXHIBITION:
@@ -655,7 +656,7 @@ const runAll = async () =>  {
   resArr = resArr.reverse();
 
   // (3)- override the items to process
-  resArr = [612];
+  // resArr = [612];
 
   let completeCount = 0;
   let queueLength = resArr.length;
