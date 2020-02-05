@@ -35,8 +35,9 @@ To migrate just the images from Alchemy into Contentful as assets, run:
 node images.js
 ```
 
-It will maintain a log of the images previously migrated in tmp/images.json and
-so can be stopped and resumed without starting over.
+The sys ID of the asset will be derived from the MD5 hash of the Alchemy picture
+UID, and only be stored if it does not already exist, so can be stopped and
+resumed without starting over.
 
 ### Entries
 

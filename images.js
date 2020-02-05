@@ -1,12 +1,11 @@
 require('dotenv').config();
 const contentful = require('contentful-management');
 const { Client } = require('pg');
-const fs = require('fs');
+
+const { assetExists, assetIdForImage } = require('./src/assets');
+
 const imageServer = process.env.alchemyImageServer;
 const locale = 'en-GB';
-
-const imageLog = './tmp/images.json';
-const images = fs.existsSync(imageLog) ? require(imageLog) : {};
 
 const maxLengthShort = 255;
 const maxLengthLong = 2000;
@@ -35,29 +34,29 @@ const wrapLocale = (val, l, max) => {
 };
 
 const migrateImage = async(picture) => {
-  const uid = encodeURIComponent(picture.image_file_uid);
+  const uid = picture.image_file_uid;
+  const assetId = await assetIdForImage(uid);
 
-  if (images[uid]) {
-    console.log(`[EXISTS] ${uid}: ${images[uid]}`);
+  const exists = await assetExists(environment, assetId);
+  if (exists) {
+    console.log(`[EXISTS] ${uid}: ${assetId}`);
     return;
   }
 
   try {
-    const asset = await environment.createAsset({
+    const asset = await environment.createAssetWithId(assetId, {
       fields: {
         title: wrapLocale(picture.title, null, maxLengthShort),
         file: wrapLocale({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
           fileName: picture.image_file_name,
-          upload: `${imageServer}${uid}`
+          upload: `${imageServer}${encodeURIComponent(uid)}`
         })
       }
     });
 
     const processedAsset = await asset.processForAllLocales();
-    await processedAsset.publish();
-    images[uid] = asset.sys.id;
-    fs.writeFileSync(imageLog, JSON.stringify(images, null, 2));
+    processedAsset.publish();
 
     console.log(`[NEW] ${uid}: ${asset.sys.id}`);
   } catch(e) {
@@ -76,8 +75,8 @@ const migrateImages = async() => {
     INNER JOIN alchemy_pictures ap ON aep.picture_id=ap.id
     INNER JOIN alchemy_contents ac ON ac.essence_id=aep.id AND ac.essence_type='Alchemy::EssencePicture'
     INNER JOIN alchemy_elements ae ON ac.element_id=ae.id
-    INNER JOIN alchemy_contents acc ON acc.element_id=ae.id AND acc.essence_type='Alchemy::EssenceCredit'
-    INNER JOIN alchemy_essence_credits aec ON acc.essence_id=aec.id
+    LEFT JOIN alchemy_contents acc ON acc.element_id=ae.id AND acc.essence_type='Alchemy::EssenceCredit'
+    LEFT JOIN alchemy_essence_credits aec ON acc.essence_id=aec.id
   `);
   await pgClient.end();
 

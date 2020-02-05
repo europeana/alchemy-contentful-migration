@@ -5,6 +5,9 @@ const cheerio = require('cheerio');
 const fs = require('fs');
 const TurndownService = require('turndown');
 const turndownService = new TurndownService();
+
+const { assetExists, assetIdForImage } = require('./src/assets');
+
 const errorLog = fs.createWriteStream('log.txt', {flags: 'w'});
 const locale = 'en-GB';
 
@@ -23,8 +26,6 @@ const dryRun = false; // change to true for dryRun
 
 let space;
 let environment;
-
-let imageSysIds;
 
 const cEnvironmentId = process.env.cEnvironmentId;
 const cSpaceId = process.env.cSpaceId;
@@ -375,9 +376,9 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
     err(`Cropped credits url ${credit.url} for ${credit.title} (essence_id ${row.essence_id}, element_id: ${row.element_id})`);
   }
 
-  let assetSysId = imageSysIds[encodeURIComponent(picture.image_file_uid)];
+  const assetSysId = await assetIdForImage(picture.image_file_uid);
 
-  if(!assetSysId){
+  if(!await assetExists(assetSysId)){
     let msg = `Missing asset for ${picture.image_file_uid}\n\t${encodeURIComponent(picture.image_file_uid)}`;
     console.log(msg);
     err(`Missing asset for: ${picture.image_file_uid}`);
@@ -654,7 +655,7 @@ const runAll = async () =>  {
   resArr = resArr.reverse();
 
   // (3)- override the items to process
-  // resArr = [612];
+  resArr = [612];
 
   let completeCount = 0;
   let queueLength = resArr.length;
@@ -749,13 +750,4 @@ const run = async(exhibitionId) =>  {
   }
 };
 
-fs.readFile('tmp/images.json', (err, data) => {
-  if(err){
-    console.log(`Generate the images first by running:\n\tnode images.js\n${err}`);
-  }
-  else{
-    imageSysIds = JSON.parse(data);
-    console.log(`Proceed!`);
-    runAll();
-  }
-});
+runAll();
