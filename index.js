@@ -1,3 +1,5 @@
+/* eslint-disable */
+
 require('dotenv').config();
 const contentful = require('contentful-management');
 const { Client } = require('pg');
