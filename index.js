@@ -1,39 +1,23 @@
 /* eslint-disable */
 
-require('dotenv').config();
-const contentful = require('contentful-management');
-const { Client } = require('pg');
 const cheerio = require('cheerio');
 const fs = require('fs');
-const TurndownService = require('turndown');
-const turndownService = new TurndownService();
+
+const {
+  pgClient, contentfulManagementClient, turndownService, defaultLocale
+} = require('./src/config');
+const { assetExists, assetIdForImage, loadAssetIds } = require('./src/assets');
+const { wrapLocale } = require('./src/utils');
+
 const errorLog = fs.createWriteStream('log.txt', {flags: 'w'});
-const locale = 'en-GB';
 
 const maxLengthShort = 255;
 const maxLengthLong = 2000;
 
-const pgClient = new Client({
-  user: process.env.pgUser,
-  host: process.env.pgHost,
-  database: process.env.pgDatabase,
-  port: process.env.pgPort
-});
-
 const dryRun = false; // change to true for dryRun
 //const dryRun = true;
 
-let space;
 let environment;
-
-let imageSysIds;
-
-const cEnvironmentId = process.env.cEnvironmentId;
-const cSpaceId = process.env.cSpaceId;
-
-const cClient = contentful.createClient({
-  accessToken: process.env.cAccessToken
-});
 
 const err = (s) => {
   errorLog.write(`\n${s}`);
@@ -147,7 +131,7 @@ const mimicAsset = (data) => {
 const mimicValidate = (ob, shortTexts, longTexts) => {
   const test = (subject, arr, maxLen) => {
     arr.forEach((f) => {
-      if(subject.fields[f] && subject.fields[f][locale] && subject.fields[f][locale].length > maxLen){
+      if(subject.fields[f] && subject.fields[f][defaultLocale] && subject.fields[f][defaultLocale].length > maxLen){
         throw new Error(`invalid ${f} (length > ${maxLen})`);
       }
     });
@@ -174,14 +158,8 @@ const writeEntry = async (type, entryData) => {
   }
 };
 
-const wrapLocale = (val, l, max) => {
-  return {
-    [l ? l : locale]: (typeof val === 'string' && max) ? val.substr(0, max) : val
-  };
-};
-
 const getObjectBase = () => {
-  return { hasPart: { [locale]: [] } };
+  return { hasPart: { [defaultLocale]: [] } };
 };
 
 const getEntryLink = (id) => {
@@ -358,7 +336,7 @@ const processEmbedRow = async (row, cObject, name) => {
   let htmlSrc = await queryHtml(row.essence_id);
   if(htmlSrc){
     const rt = await writeEntry('embed', { fields: { name: wrapLocale(name), embed: wrapLocale(htmlSrc) } });
-    cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
+    cObject.hasPart[defaultLocale].push(getEntryLink(rt.sys.id));
   }
 };
 
@@ -374,10 +352,10 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
     err(`Cropped credits url ${credit.url} for ${credit.title} (essence_id ${row.essence_id}, element_id: ${row.element_id})`);
   }
 
-  let assetSysId = imageSysIds[encodeURIComponent(picture.image_file_uid)];
+  const assetSysId = await assetIdForImage(picture.image_file_uid);
 
-  if(!assetSysId){
-    let msg = `Missing asset for ${picture.image_file_uid}\n\t${encodeURIComponent(picture.image_file_uid)}`;
+  if(!await assetExists(assetSysId)){
+    let msg = `Missing asset for ${picture.image_file_uid}\n  ${encodeURIComponent(picture.image_file_uid)}`;
     console.log(msg);
     err(`Missing asset for: ${picture.image_file_uid}`);
     return;
@@ -385,10 +363,10 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
 
   let imageObject = {
     fields: {
-      name: wrapLocale(credit.title, null, maxLengthShort),
-      creator: wrapLocale(credit.author, null, maxLengthShort),
+      name: wrapLocale(credit.title, { max: maxLengthShort }),
+      creator: wrapLocale(credit.author, { max: maxLengthShort }),
       image: {
-        [locale]: {
+        [defaultLocale]: {
           sys: {
             type: 'Link',
             linkType: 'Asset',
@@ -396,32 +374,32 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
           }
         }
       },
-      provider: wrapLocale(credit.institution, null, maxLengthShort),
+      provider: wrapLocale(credit.institution, { max: maxLengthShort }),
       license: wrapLocale(licenseLookup(credit.license))
     }
   };
 
   if(credit.url && credit.url.length > 0){
-    imageObject.fields.url =  wrapLocale(adjustRecordUrl(credit.url), null, maxLengthShort);
+    imageObject.fields.url =  wrapLocale(adjustRecordUrl(credit.url), { max: maxLengthShort });
   }
 
   imageObject = await writeEntry('imageWithAttribution', imageObject);
 
   if(row.element_name === 'image_compare'){
     if(cache.imageCompare){
-      let icTitle = [cache.imageCompare.fields.name[locale],
-        imageObject.fields.name[locale]].join(' / ');
+      let icTitle = [cache.imageCompare.fields.name[defaultLocale],
+        imageObject.fields.name[defaultLocale]].join(' / ');
 
       let imageCompare = await writeEntry('imageComparison', {
         fields: {
-          name: wrapLocale(icTitle, null, maxLengthShort),
+          name: wrapLocale(icTitle, { max: maxLengthShort }),
           hasPart: wrapLocale([
             getEntryLink(cache.imageCompare.sys.id),
             getEntryLink(imageObject.sys.id)
           ])
         }
       });
-      cObject.hasPart[locale].push(
+      cObject.hasPart[defaultLocale].push(
           getEntryLink(imageCompare.sys.id)
       );
       cache.imageCompare = false;
@@ -432,12 +410,12 @@ const processImageRow = async (row, cObject, cache, isIntro, pc) => {
   }
   else if(!cObject.primaryImageOfPage){
     cObject.primaryImageOfPage = {
-      [locale]: getEntryLink(imageObject.sys.id)
+      [defaultLocale]: getEntryLink(imageObject.sys.id)
     };
   }
   else{
     if(!isIntro){
-      cObject.hasPart[locale].push(getEntryLink(imageObject.sys.id));
+      cObject.hasPart[defaultLocale].push(getEntryLink(imageObject.sys.id));
     }
     else{
       err(`Image will not be saved: ${picture.image_file_uid}`);
@@ -457,12 +435,12 @@ const processTextRow = async (row, cObject, isIntro) => {
 
   if(row.name === 'title'){
     if(!cObject.name){
-      cObject.name = wrapLocale(text, null, maxLengthShort);
+      cObject.name = wrapLocale(text, { max: maxLengthShort });
     }
   }
   else if(row.name === 'sub_title'){
     if(!cObject.headline){
-      cObject.headline = wrapLocale(text, null, maxLengthShort);
+      cObject.headline = wrapLocale(text, { max: maxLengthShort });
     }
   }
   else if(row.name === 'body' && isIntro) {
@@ -474,9 +452,9 @@ const processTextRow = async (row, cObject, isIntro) => {
     }
 
     if (isIntro) {
-      cObject.text = wrapLocale(turndownService.turndown(fieldValue), null, maxLengthLong);
+      cObject.text = wrapLocale(turndownService.turndown(fieldValue), { max: maxLengthLong });
     } else if (!cObject.description) {
-      cObject.description = wrapLocale(turndownService.turndown(fieldValue), null, maxLengthShort);
+      cObject.description = wrapLocale(turndownService.turndown(fieldValue), { max: maxLengthShort });
     }
   }
   else if(cObject.hasPart && !isIntro){
@@ -491,11 +469,11 @@ const processTextRow = async (row, cObject, isIntro) => {
 
     rt = await writeEntry('richText', {
       fields: {
-        headline: wrapLocale(headlineField, null, maxLengthShort),
-        text: wrapLocale(markdownTextField(textField, row.name), null, maxLengthLong)
+        headline: wrapLocale(headlineField, { max: maxLengthShort }),
+        text: wrapLocale(markdownTextField(textField, row.name), { max: maxLengthLong })
       }
     });
-    cObject.hasPart[locale].push(getEntryLink(rt.sys.id));
+    cObject.hasPart[defaultLocale].push(getEntryLink(rt.sys.id));
   }
 };
 
@@ -555,7 +533,7 @@ const processRows = async (rows, locales, intro) => {
     let description = row.meta_description;
 
     if(description && !cObject.description){
-      cObject.description = wrapLocale(description, null, maxLengthLong);
+      cObject.description = wrapLocale(description, { max: maxLengthLong });
     }
 
     if(row.essence_type === 'Alchemy::EssenceHtml'){
@@ -595,7 +573,7 @@ const smartDelete = async (itemId, recurseLevel = 0) =>  new Promise(async resol
     return;
   }
 
-  const pad     = '\t'.repeat(recurseLevel);
+  const pad = '  '.repeat(recurseLevel);
 
   const loc2arr = (loc) => {
     let res = [];
@@ -623,7 +601,7 @@ const smartDelete = async (itemId, recurseLevel = 0) =>  new Promise(async resol
 
   let fNames = Object.keys(entry.fields);
 
-  console.log(`${pad}(delete ${entry.sys.contentType.sys.id})`);
+  console.log(`${pad}- [DELETE] ${entry.sys.contentType.sys.id}: ${entry.sys.id}`);
 
   if(entry.fields.hasPart){
     let hasPartList = loc2arr(entry.fields.hasPart);
@@ -652,8 +630,7 @@ const runAll = async () =>  {
 
   let startTime = new Date().getTime();
 
-  space       = await cClient.getSpace(cSpaceId);
-  environment = await space.getEnvironment(cEnvironmentId);
+  environment = await contentfulManagementClient.connect();
   let ex      = await environment.getEntries({ content_type: 'exhibitionPage'});
 
   // TO WORK ON A SINGLE EXHIBITION:
@@ -666,6 +643,8 @@ const runAll = async () =>  {
 
   console.log('deleted old in ' + getTimeString(startTime, new Date().getTime()));
 
+  await loadAssetIds();
+
   await pgClient.connect();
   let resArr = await queryExhibitions('en');
   resArr = resArr.rows.map(x => x.parent_id);
@@ -673,7 +652,7 @@ const runAll = async () =>  {
   resArr = resArr.reverse();
 
   // (3)- override the items to process
-  // resArr = [612];
+  // resArr = [1411];
 
   let completeCount = 0;
   let queueLength = resArr.length;
@@ -682,8 +661,8 @@ const runAll = async () =>  {
     await run(nextExhibitionId);
     const pct = parseInt(100 - (resArr.length / queueLength) * 100);
     completeCount ++;
-    console.log(`\n\t\t--> written exhibition ${nextExhibitionId}\t ${pct}%\t(${completeCount} of ${queueLength})`);
-    console.log('\t\t--> running for ' + getTimeString(startTime, new Date().getTime()));
+    console.log(`\n    --> written exhibition ${nextExhibitionId}   ${pct}%  (${completeCount} of ${queueLength})`);
+    console.log('    --> running for ' + getTimeString(startTime, new Date().getTime()));
   }
 
   console.log('done in ' + getTimeString(startTime, new Date().getTime()));
@@ -700,7 +679,7 @@ const run = async(exhibitionId) =>  {
 
     var pDate = new Date(res.rows[0].public_on);
 
-    console.log(`\t...will process ${res.rows.length} rows for ${res.rows[0].urlname.split('/').reverse().pop()}\n\t > ${pDate.toLocaleDateString('en-GB')}\n`);
+    console.log(`  ...will process ${res.rows.length} rows for ${res.rows[0].urlname.split('/').reverse().pop()}\n   > ${pDate.toLocaleDateString('en-GB')}\n`);
 
 
     /* locales / experimental */
@@ -710,18 +689,18 @@ const run = async(exhibitionId) =>  {
 
     if(variants.length > 0){
 
-      console.log(`\tVariant${variants.length == 1 ? '' : 's' } of "${res.rows[0].urlname.split('/').reverse().pop()}":\n`);
+      console.log(`  Variant${variants.length == 1 ? '' : 's' } of "${res.rows[0].urlname.split('/').reverse().pop()}":\n`);
 
       await Promise.all(
         variants.map(async (r) => {
           return new Promise(async resolve => {
             const localeRows = await queryExhibitions(r.language_code, r.exhibition_id);
             locales[r.language_code] = localeRows.rows;
-            resolve(`\t - [${r.language_code}] (${localeRows.rows.length} rows):\t${localeRows.rows[0].title.trim()}`);
+            resolve(`   - [${r.language_code}] (${localeRows.rows.length} rows):  ${localeRows.rows[0].title.trim()}`);
           })
         })
       ).then((debug) => {
-        console.log(`\tVariant${variants.length == 1 ? '' : 's' } of "${res.rows[0].title.trim()}":\n${debug.join('\n')}`);
+        console.log(`  Variant${variants.length == 1 ? '' : 's' } of "${res.rows[0].title.trim()}":\n${debug.join('\n')}`);
       });
     }
     */
@@ -755,7 +734,7 @@ const run = async(exhibitionId) =>  {
         console.log(`Link ${chapterRefs.length} refs...`);
 
         while(chapter = chapterRefs.pop()){
-          intro.fields.hasPart[locale].push(getEntryLink(chapter.sys.id));
+          intro.fields.hasPart[defaultLocale].push(getEntryLink(chapter.sys.id));
         }
         //await intro.update();
         intro = await intro.update();
@@ -768,13 +747,4 @@ const run = async(exhibitionId) =>  {
   }
 };
 
-fs.readFile('tmp/images.json', (err, data) => {
-  if(err){
-    console.log(`Generate the images first by running:\n\tnode images.js\n${err}`);
-  }
-  else{
-    imageSysIds = JSON.parse(data);
-    console.log(`Proceed!`);
-    runAll();
-  }
-});
+runAll();

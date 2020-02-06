@@ -3,34 +3,38 @@ const fs = require('fs');
 const path = require('path');
 
 const { Client } = require('pg');
-const contentful = require('contentful-management');
+const contentfulManagement = require('contentful-management');
+const contentful = require('contentful');
 
 const pgClient = new Client({
-  user: process.env.pgUser,
-  host: process.env.pgHost,
-  database: process.env.pgDatabase,
-  port: process.env.pgPort
+  connectionString: process.env['PG_URL']
 });
 
-const contentfulClient = contentful.createClient({
-  accessToken: process.env.cAccessToken
-});
-contentfulClient.connect = async function() {
-  const space = await this.getSpace(process.env.cSpaceId);
-  const environment = await space.getEnvironment(process.env.cEnvironmentId);
-  return environment;
+const contentfulManagementClient = {
+  connect: async function() {
+    const client = await contentfulManagement.createClient({
+      accessToken: process.env['CTF_CMA_ACCESS_TOKEN']
+    });
+    const space = await client.getSpace(process.env['CTF_SPACE_ID']);
+    const environment = await space.getEnvironment(process.env['CTF_ENVIRONMENT_ID']);
+    return environment;
+  }
 };
+
+const contentfulPreviewClient = contentful.createClient({
+  accessToken: process.env['CTF_CPA_ACCESS_TOKEN'],
+  space: process.env['CTF_SPACE_ID'],
+  environment: process.env['CTF_ENVIRONMENT_ID'],
+  host: 'preview.contentful.com'
+});
 
 const TurndownService = require('turndown');
 const turndownService = new TurndownService();
 
-const imageLogPath = path.resolve(__dirname, '../tmp/images.json');
-const imageLog = fs.existsSync(imageLogPath) ? JSON.parse(fs.readFileSync(imageLogPath, 'utf8')) : {};
-
 module.exports = {
+  defaultLocale: 'en-GB',
   pgClient,
-  contentfulClient,
-  turndownService,
-  imageLogPath,
-  imageLog
+  contentfulManagementClient,
+  contentfulPreviewClient,
+  turndownService
 };

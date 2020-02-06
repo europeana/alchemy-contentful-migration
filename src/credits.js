@@ -1,4 +1,6 @@
-const { imageLog, pgClient, turndownService, contentfulClient } = require('./config');
+const { assetExists, assetIdForImage, loadAssetIds } = require('./assets');
+const { pgClient, turndownService, contentfulManagementClient } = require('./config');
+
 let contentfulConnection;
 
 const pagesSql = `
@@ -79,9 +81,8 @@ const fetchEssence = async(type, id) => {
 };
 
 const contentfulAssetForAlchemyPicture = async(imageFileUid) => {
-  const uid = encodeURIComponent(imageFileUid);
-  const assetId = imageLog[uid];
-  if (!assetId) return '';
+  const assetId = assetIdForImage(imageFileUid);
+  if (!await assetExists(assetId)) return '';
 
   const asset = await contentfulConnection.getAsset(assetId);
 
@@ -148,7 +149,9 @@ const creditExhibition = async(urlname, rows) => {
 };
 
 const run = async() => {
-  contentfulConnection = await contentfulClient.connect();
+  contentfulConnection = await contentfulManagementClient.connect();
+  await loadAssetIds();
+
   await pgClient.connect();
 
   const result = await pgClient.query(pagesSql);

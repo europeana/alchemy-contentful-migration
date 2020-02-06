@@ -1,43 +1,40 @@
 require('dotenv').config();
-const { imageLog, imageLogPath, pgClient, contentfulClient } = require('./config');
 
-const fs = require('fs');
-const imageServer = process.env.alchemyImageServer;
-const locale = 'en-GB';
+const { pgClient, contentfulManagementClient } = require('./config');
+const { assetExists, assetIdForImage } = require('./assets');
+const { wrapLocale } = require('./utils');
+
+const imageServer = process.env['ALCHEMY_IMAGE_SERVER'];
 const maxLengthShort = 255;
 
-let contentfulConnection;
-
-const wrapLocale = (val, l, max) => {
-  return {
-    [l ? l : locale]: (typeof val === 'string' && max) ? val.substr(0, max) : val
-  };
-};
+let contentfulEnvironment;
 
 const migrateImage = async(picture) => {
-  const uid = encodeURIComponent(picture.image_file_uid);
+  const uid = picture.image_file_uid;
+  const assetId = await assetIdForImage(uid);
 
-  if (imageLog[uid]) {
-    console.log(`[EXISTS] ${uid}: ${imageLog[uid]}`);
+  const exists = await assetExists(assetId);
+  if (exists) {
+    console.log(`[EXISTS] ${uid}: ${assetId}`);
     return;
   }
 
   try {
-    const asset = await contentfulConnection.createAsset({
+    // Assets may not be published without a title. Fallback to file name.
+    const title = (!picture.title || picture.title === '') ? picture.image_file_name : picture.title;
+    const asset = await contentfulEnvironment.createAssetWithId(assetId, {
       fields: {
-        title: wrapLocale(picture.title || picture.image_file_name, null, maxLengthShort),
+        title: wrapLocale(title, { max: maxLengthShort }),
         file: wrapLocale({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
           fileName: picture.image_file_name,
-          upload: `${imageServer}${uid}`
+          upload: `${imageServer}${encodeURIComponent(uid)}`
         })
       }
     });
 
     const processedAsset = await asset.processForAllLocales();
-    await processedAsset.publish();
-    imageLog[uid] = asset.sys.id;
-    fs.writeFileSync(imageLogPath, JSON.stringify(imageLog, null, 2));
+    processedAsset.publish();
 
     console.log(`[NEW] ${uid}: ${asset.sys.id}`);
   } catch (e) {
@@ -46,7 +43,7 @@ const migrateImage = async(picture) => {
 };
 
 const migrateImages = async() => {
-  contentfulConnection = await contentfulClient.connect();
+  contentfulEnvironment = await contentfulManagementClient.connect();
 
   await pgClient.connect();
   const res = await pgClient.query(`
