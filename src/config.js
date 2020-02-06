@@ -32,6 +32,7 @@ const TurndownService = require('turndown');
 const turndownService = new TurndownService();
 
 module.exports = {
+  defaultLocale: 'en-GB',
   pgClient,
   contentfulManagementClient,
   contentfulPreviewClient,

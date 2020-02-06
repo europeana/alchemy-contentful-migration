@@ -1,18 +1,13 @@
 require('dotenv').config();
+
 const { pgClient, contentfulManagementClient } = require('./config');
 const { assetExists, assetIdForImage } = require('./assets');
+const { wrapLocale } = require('./utils');
 
 const imageServer = process.env['ALCHEMY_IMAGE_SERVER'];
-const locale = 'en-GB';
 const maxLengthShort = 255;
 
 let contentfulEnvironment;
-
-const wrapLocale = (val, l, max) => {
-  return {
-    [l ? l : locale]: (typeof val === 'string' && max) ? val.substr(0, max) : val
-  };
-};
 
 const migrateImage = async(picture) => {
   const uid = picture.image_file_uid;
@@ -25,9 +20,11 @@ const migrateImage = async(picture) => {
   }
 
   try {
+    // Assets may not be published without a title. Fallback to file name.
+    const title = (!picture.title || picture.title === '') ? picture.image_file_name : picture.title;
     const asset = await contentfulEnvironment.createAssetWithId(assetId, {
       fields: {
-        title: wrapLocale(picture.title || picture.image_file_name, null, maxLengthShort),
+        title: wrapLocale(title, { max: maxLengthShort }),
         file: wrapLocale({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
           fileName: picture.image_file_name,

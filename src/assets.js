@@ -4,9 +4,10 @@ const { contentfulPreviewClient } = require('./config');
 
 let assetIds;
 
-const getAssetIds = async() => {
+// Fetch all asset IDs via the preview API, for later use by `assetExists`
+const loadAssetIds = async() => {
   console.log('Getting asset IDs...');
-  let ids = [];
+  assetIds = [];
 
   let skip = 0;
   let keepGoing = true;
@@ -19,17 +20,17 @@ const getAssetIds = async() => {
     if (assets.items.length === 0) {
       keepGoing = false;
     } else {
-      ids = ids.concat(assets.items.map((item) => item.sys.id));
+      assetIds = assetIds.concat(assets.items.map((item) => item.sys.id));
       skip = skip + 100;
     }
   }
 
   console.log('... done.');
-  return ids;
+  return assetIds;
 };
 
 const assetExists = async(assetId) => {
-  if (!assetIds) assetIds = await getAssetIds();
+  if (!assetIds) await loadAssetIds();
 
   return assetIds.includes(assetId);
 };
@@ -40,5 +41,6 @@ const assetIdForImage = (uid) => {
 
 module.exports = {
   assetExists,
-  assetIdForImage
+  assetIdForImage,
+  loadAssetIds
 };
