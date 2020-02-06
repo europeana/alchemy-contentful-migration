@@ -1,6 +1,6 @@
 {
   "name": "alchemy-contentful",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -13,12 +13,11 @@
   "license": "EUPL-1.2",
   "dependencies": {
     "cheerio": "^1.0.0-rc.3",
+    "contentful": "^7.13.1",
     "contentful-cli": "^1.2.5",
     "dotenv": "^8.2.0",
     "pg": "^7.17.1",
     "turndown": "^5.0.3"
   },
-  "devDependencies": {
-    "contentful": "^7.13.1"
-  }
+  "devDependencies": {}
 }
