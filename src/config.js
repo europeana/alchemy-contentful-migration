@@ -1,6 +1,4 @@
 require('dotenv').config();
-const fs = require('fs');
-const path = require('path');
 
 const { Client } = require('pg');
 const contentfulManagement = require('contentful-management');
@@ -11,7 +9,7 @@ const pgClient = new Client({
 });
 
 const contentfulManagementClient = {
-  connect: async function() {
+  connect: async() => {
     const client = await contentfulManagement.createClient({
       accessToken: process.env['CTF_CMA_ACCESS_TOKEN']
     });
@@ -33,6 +31,8 @@ const turndownService = new TurndownService();
 
 module.exports = {
   defaultLocale: 'en-GB',
+  maxLengthShort: 255,
+  maxLengthLong: 2000,
   pgClient,
   contentfulManagementClient,
   contentfulPreviewClient,

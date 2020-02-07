@@ -62,4 +62,11 @@ const migrateImages = async() => {
   }
 };
 
-migrateImages();
+const cli = async() => {
+  migrateImages();
+};
+
+module.exports = {
+  migrateImages,
+  cli
+};

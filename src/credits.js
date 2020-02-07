@@ -1,5 +1,6 @@
 const { assetExists, assetIdForImage, loadAssetIds } = require('./assets');
 const { pgClient, turndownService, contentfulManagementClient } = require('./config');
+const { localeMap } = require('./utils');
 
 let contentfulConnection;
 
@@ -30,22 +31,6 @@ const pagesSql = `
     ap.urlname,
     ap.language_code
 `;
-
-const localeMap = {
-  de: 'de-DE',
-  en: 'en-GB',
-  'en-gb': 'en-GB',
-  es: 'es-ES',
-  fi: 'fi-FI',
-  fr: 'fr-FR',
-  it: 'it-IT',
-  lv: 'lv-LV',
-  nl: 'nl-NL',
-  pl: 'pl-PL',
-  ro: 'ro-RO',
-  sl: 'sl-SI',
-  sv: 'sv-SE'
-};
 
 const fetchEssence = async(type, id) => {
   let sql;
@@ -144,11 +129,11 @@ const creditExhibition = async(urlname, rows) => {
   try {
     await updated.publish();
   } catch (e) {
-    console.log(`Publish failed: `, e);
+    console.log('Publish failed: ', e);
   }
 };
 
-const run = async() => {
+const migrateCredits = async() => {
   contentfulConnection = await contentfulManagementClient.connect();
   await loadAssetIds();
 
@@ -169,4 +154,11 @@ const run = async() => {
   await pgClient.end();
 };
 
-run();
+const cli = async() => {
+  await migrateCredits();
+};
+
+module.exports = {
+  migrateCredits,
+  cli
+};
