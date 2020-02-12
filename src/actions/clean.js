@@ -1,19 +1,17 @@
 // TODO: in future, move this to its own Node package
+// TODO: check this cleans primayImageOfPage on exhibitionPage
 
-const { contentfulManagementClient, contentfulPreviewClient } = require('./config');
-const { padLog } = require('./utils');
+const { contentfulManagement, contentfulPreviewClient } = require('../support/config');
+const { padLog } = require('../support/utils');
 
 const contentTypeId = 'exhibitionPage';
-
-const contentfulPreviewConnection = contentfulPreviewClient;
-let contentfulManagementConnection;
 
 const contentfulContentTypeLinkFields = {};
 
 const deleteEntry = async(id, depth = 0) => {
   let entry;
   try {
-    entry = await contentfulManagementConnection.getEntry(id);
+    entry = await contentfulManagement.environment.getEntry(id);
   } catch {
     entry = undefined;
   }
@@ -49,7 +47,7 @@ async function mayDeleteLinkedEntry(entry, depth = 0) {
     return true;
   }
 
-  const linksToEntry = await contentfulPreviewConnection.getEntries({
+  const linksToEntry = await contentfulPreviewClient.getEntries({
     'links_to_entry': entry.sys.id
   })
     .then((response) => {
@@ -63,7 +61,7 @@ async function mayDeleteLinkedEntry(entry, depth = 0) {
 }
 
 const getEntriesPage = async() => {
-  const entries = await contentfulPreviewConnection.getEntries({
+  const entries = await contentfulPreviewClient.getEntries({
     'content_type': contentTypeId,
     'include': 10
   })
@@ -78,7 +76,6 @@ const getEntriesPage = async() => {
 };
 
 const clean = async() => {
-  contentfulManagementConnection = await contentfulManagementClient.connect();
   let entries;
 
   while ((entries = await getEntriesPage()).length > 0) {
@@ -128,6 +125,7 @@ const linkFieldIds = async(contentTypeId) => {
 };
 
 const cli = async() => {
+  await contentfulManagement.connect();
   await clean();
 };
 

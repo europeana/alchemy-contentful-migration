@@ -1,4 +1,4 @@
-const { pgClient } = require('./config');
+const { pgClient } = require('../support/config');
 const { create } = require('./create');
 
 const getEnglishExhibitionPageIds = async() => {
@@ -25,6 +25,9 @@ const createExhibitions = async() =>  {
 };
 
 const cli = async() => {
+  // TODO:
+  // 1. run images
+  // 2. run assets cache
   await createExhibitions();
 };
 

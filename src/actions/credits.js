@@ -1,6 +1,6 @@
 const { assetExists, assetIdForImage, loadAssetIds } = require('./assets');
-const { pgClient, turndownService, contentfulManagementClient } = require('./config');
-const { localeMap } = require('./utils');
+const { pgClient, turndownService, contentfulManagementClient } = require('../support/config');
+const { localeMap } = require('../support/utils');
 
 let contentfulConnection;
 

@@ -1,8 +1,8 @@
 require('dotenv').config();
 
-const { pgClient, contentfulManagementClient } = require('./config');
+const { pgClient, contentfulManagementClient } = require('../support/config');
 const { assetExists, assetIdForImage } = require('./assets');
-const { wrapLocale } = require('./utils');
+const { wrapLocale } = require('../support/utils');
 
 const imageServer = process.env['ALCHEMY_IMAGE_SERVER'];
 const maxLengthShort = 255;

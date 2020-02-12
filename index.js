@@ -1,17 +1,14 @@
-const exhibition = {
-  clean: require('./src/clean').cli,
-  create: require('./src/create').cli,
-  credits: require('./src/credits').cli,
-  images: require('./src/images').cli,
-  migrate: require('./src/migrate').cli,
-  load: require('./src/load').cli
-};
+const actions = [
+  'assets', 'clean', 'create', 'credits', 'help', 'images', 'migrate', 'load'
+];
 
 const act = async(action, args) => {
-  if (exhibition[action]) return await exhibition[action](args);
+  if (!actions.includes(action)) {
+    console.log(`Unknown action: ${action}`);
+    process.exit(1);
+  }
 
-  console.log(`Unknown action: ${action}`);
-  process.exit(1);
+  return require(`./src/actions/${action}`).cli(args);
 };
 
 const action = process.argv[2];
