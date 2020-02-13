@@ -28,34 +28,55 @@ and the contentful variables:
 
 ## Running the scripts
 
+For an overview of the available CLI commands, run:
+```
+npm run exhibition help
+```
+
 ### Images
 
 To migrate just the images from Alchemy into Contentful as assets, run:
 ```
-npm run images
+npm run exhibition images
 ```
 
 The sys ID of the asset will be derived from the MD5 hash of the Alchemy picture
 UID, and only be stored if it does not already exist, so can be stopped and
 resumed without starting over.
 
-### Entries
+### Migrate
 
-Comment out the 'clean' commands as per the contentful environment, and run:
+To create content entries in Contentful for all exhibitions, with translations:
 ```
-node index.js
+npm run exhibition migrate
 ```
-
-The script generates the file log.txt to record:
-
-* publication errors
-* missing rights statements
-* cropped urls
-* unused images
 
 ### Credits
 
 After entries are created, add the credits with:
 ```
-npm run credits
+npm run exhibition credits
+```
+
+### Clean
+
+To delete exhibition content entries and all linked entries:
+```
+npm run exhibition clean
+```
+NB: this will not delete the assets created with the `images` script.
+
+### Load
+
+To inspect the data gathered for a given exhibition page from Alchemy:
+```
+npm run exhibition load <urlname> [locale]
+```
+
+### Translate
+
+To analyse the alignment of essences of multilingual Alchemy pages, in order
+to establish whether they may be reliably translated:
+```
+npm run exhibition translate
 ```
