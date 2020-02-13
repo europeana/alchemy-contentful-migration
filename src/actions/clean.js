@@ -1,6 +1,6 @@
 // TODO: in future, move this to its own Node package
 // TODO: check this cleans primayImageOfPage on exhibitionPage
-// TODO: permit cleaning of a single entry by sys id
+// TODO: permit cleaning of a single entry by urlname/identifier
 
 const { contentfulManagement, contentfulPreviewClient } = require('../support/config');
 const { pad } = require('../support/utils');

@@ -47,7 +47,6 @@ const create = async(urlname) =>  {
     pad.log(`- Element "${element.name}"`);
     pad.increase();
     if (elementHandlers[contentTypeId][element.name]) {
-      // pad.log(`- Handling element "${element.name}" on "${contentTypeId}"`);
       await elementHandlers[contentTypeId][element.name](element.essences, entry);
     } else {
       pad.log(`- WARNING: unhandled element "${element.name}" on "${contentTypeId}"`);
@@ -58,7 +57,6 @@ const create = async(urlname) =>  {
   pad.decrease();
 
   await entry.createAndPublish();
-  // console.log(fields);
 
   return entry;
 };
@@ -77,6 +75,7 @@ const elementHandlers = {
   exhibitionChapterPage: {
     intro: async(essences, entry) => {
       // FIXME: may be empty, but must be present on chapter page content entries
+      //        - is this true?
       entry.name = essences.get('title').data.body;
       entry.headline = essences.get('sub_title').data.body;
 

@@ -24,8 +24,6 @@ class ContentfulEntry {
   }
 
   async createAndPublish() {
-    // console.log('this.fields', JSON.stringify(this.fields, null, 2));
-    // console.log('createAndPublish', this.constructor.contentTypeId, JSON.stringify(this.fields, null, 2));
     pad.log(`- createAndPublish ${this.constructor.contentTypeId}`);
     const entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
     try {
@@ -79,10 +77,12 @@ class ContentfulEntry {
   }
 
   trimField(langMap) {
-    return this.constructor.mutateLangMapValues(langMap, (value) => value.trim());
+    return this.constructor.mutateLangMapValues(langMap, (value) =>
+      typeof value === 'string' ? value.trim() : value
+    );
   }
 
-  // TODO: replace any h1 elements with h2
+  // TODO: replace any h1 elements with h2?
   markdownTextField(langMap) {
     return this.constructor.mutateLangMapValues(langMap, (value) => {
       return turndownService.turndown(value);
@@ -226,6 +226,14 @@ class ImageWithAttributionEntry extends ContentfulEntry {
     return 'imageWithAttribution';
   }
 
+  europeanaItemUri(langMap) {
+    return this.constructor.mutateLangMapValues(langMap, (value) => {
+      if (typeof value !== 'string') return value;
+      const itemIdMatch = value.match(/europeana\.eu\/portal\/([a-z][a-z]\/)?record(\/[0-9]+\/[^/.#$]+)/);
+      return itemIdMatch ? `http://data.europeana.eu/item${itemIdMatch[2]}` : value;
+    });
+  }
+
   get fields() {
     return {
       name: this.shortTextField(this.name),
@@ -233,8 +241,7 @@ class ImageWithAttributionEntry extends ContentfulEntry {
       creator: this.shortTextField(this.creator),
       provider: this.shortTextField(this.provider),
       license: this.licenseField(this.license),
-      // FIXME: convert to data.europeana.eu url, or local portal url, or record ID?
-      url: this.shortTextField(this.trimField(this.url))
+      url: this.shortTextField(this.europeanaItemUri(this.trimField(this.url)))
     };
   }
 }
