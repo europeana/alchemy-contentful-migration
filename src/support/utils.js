@@ -9,7 +9,6 @@ const pad = {
     this.depth--;
   },
   log(msg) {
-    // console.log('depth', this.depth);
     const prefix = '  '.repeat(this.depth);
     console.log(`${prefix}${msg}`);
   }
@@ -34,6 +33,10 @@ const localeMap = {
 class LangMap {
   constructor(value, locale = defaultLocale.contentful) {
     if (value) this[locale] = value;
+  }
+
+  isEmpty() {
+    return Object.keys(this).length === 0;
   }
 }
 

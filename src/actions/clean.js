@@ -1,14 +1,19 @@
 // TODO: in future, move this to its own Node package
 // TODO: check this cleans primayImageOfPage on exhibitionPage
+// TODO: permit cleaning of a single entry by sys id
 
 const { contentfulManagement, contentfulPreviewClient } = require('../support/config');
-const { padLog } = require('../support/utils');
+const { pad } = require('../support/utils');
 
 const contentTypeId = 'exhibitionPage';
 
 const contentfulContentTypeLinkFields = {};
 
-const deleteEntry = async(id, depth = 0) => {
+const help = () => {
+  pad.log('Usage: npm run exhibition clean');
+};
+
+const deleteEntry = async(id) => {
   let entry;
   try {
     entry = await contentfulManagement.environment.getEntry(id);
@@ -17,30 +22,30 @@ const deleteEntry = async(id, depth = 0) => {
   }
 
   if (!entry) {
-    padLog('WARNING: no entry; skipping', depth);
+    pad.log('WARNING: no entry; skipping');
     return;
   }
 
   if (entry.sys.publishedVersion) {
-    padLog('- unpublishing', depth);
+    pad.log('- unpublishing');
     try {
       entry = await entry.unpublish();
     } catch (e) {
-      padLog('WARNING: failed to unpublish entry', depth + 1);
+      pad.log('WARNING: failed to unpublish entry');
     }
   }
 
-  padLog('- deleting', depth);
+  pad.log('- deleting');
   try {
     entry = await entry.delete();
   } catch (e) {
-    padLog('ERROR: failed to delete entry', depth + 1);
+    pad.log('ERROR: failed to delete entry');
     throw e;
   }
 };
 
 // Returns true where an entry is linked to exactly once, otherwise false.
-async function mayDeleteLinkedEntry(entry, depth = 0) {
+async function mayDeleteLinkedEntry(entry) {
   if (!entry || !entry.sys.revision) {
     return false;
   } else if (process.env['EXHIBITION_CLEAN_SKIP_ENTRY_DELETION_LINK_CHECK'] === '1') {
@@ -54,7 +59,7 @@ async function mayDeleteLinkedEntry(entry, depth = 0) {
       return response.items.length;
     })
     .catch(() => {
-      padLog(`Failed to get links to entry; skipping: ${entry.sys.id}`, depth);
+      pad.log(`Failed to get links to entry; skipping: ${entry.sys.id}`);
       return false;
     });
   return linksToEntry === 1;
@@ -69,7 +74,7 @@ const getEntriesPage = async() => {
       return response.items;
     })
     .catch((e) => {
-      padLog(`ERROR: Failed to get page of entries: ${contentTypeId}`);
+      pad.log(`ERROR: Failed to get page of entries: ${contentTypeId}`);
       throw e;
     });
   return entries || [];
@@ -85,23 +90,25 @@ const clean = async() => {
   }
 };
 
-const cleanEntry = async(entry, depth = 0) => {
-  padLog(`${entry.sys.contentType.sys.id}: ${entry.sys.id}`, depth);
-  padLog('- cleaning', depth);
+const cleanEntry = async(entry) => {
+  pad.log(`${entry.sys.contentType.sys.id}: ${entry.sys.id}`);
+  pad.log('- cleaning');
 
   // Clean any linked entries first
+  pad.increase();
   const linkFields = await linkFieldIds(entry.sys.contentType.sys.id);
   for (const linkField of linkFields) {
     for (const linkedEntry of [].concat(entry.fields[linkField])) {
-      const deletable = await mayDeleteLinkedEntry(linkedEntry, depth);
+      const deletable = await mayDeleteLinkedEntry(linkedEntry);
       if (deletable) {
-        await cleanEntry(linkedEntry, depth + 1);
+        await cleanEntry(linkedEntry);
       }
     }
   }
+  pad.decrease();
 
   // Delete entry itself
-  await deleteEntry(entry.sys.id, depth);
+  await deleteEntry(entry.sys.id);
 };
 
 const isEntryLinkField = (field) => {
@@ -131,5 +138,6 @@ const cli = async() => {
 
 module.exports = {
   clean,
-  cli
+  cli,
+  help
 };

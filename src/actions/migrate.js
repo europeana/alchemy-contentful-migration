@@ -1,37 +1,34 @@
-const { pgClient } = require('../support/config');
-const { create } = require('./create');
+const { pgClient, contentfulManagement } = require('../support/config');
+const { pad } = require('../support/utils');
 
-const getEnglishExhibitionPageIds = async() => {
-  const sql = `
-    select id
-    from alchemy_pages ap
-    where ap.page_layout = 'exhibition_theme_page' and ap.depth=2 and ap.published_at is not null and ap.language_code='en'
-    order by urlname
-  `;
-  const result = await pgClient.query(sql);
-  return result.rows.map((page) => page.id);
+const { create } = require('./create');
+const { getExhibitionPageUrlnames } = require('./translate');
+
+const help = () => {
+  pad.log('Usage: npm run exhibition migrate');
 };
 
 const createExhibitions = async() =>  {
-  await pgClient.connect();
+  const urlnames = await getExhibitionPageUrlnames();
 
-  const exhibitionIds = await getEnglishExhibitionPageIds();
-
-  for (const exhibitionId of exhibitionIds) {
-    await create(exhibitionId);
+  for (const urlname of urlnames) {
+    await create(urlname);
   }
-
-  await pgClient.end();
 };
 
 const cli = async() => {
+  await contentfulManagement.connect();
+  await pgClient.connect();
+
   // TODO:
   // 1. run images
   // 2. run assets cache
   await createExhibitions();
+
+  await pgClient.end();
 };
 
 module.exports = {
-  createExhibitions,
-  cli
+  cli,
+  help
 };

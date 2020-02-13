@@ -8,12 +8,33 @@ class ContentfulEntry {
     this.sys = {};
   }
 
+  static mutateLangMapValues(value, mutation) {
+    const langMap = (value instanceof LangMap) ? value : new LangMap(value);
+    const mutated = new LangMap;
+
+    for (const locale in langMap) {
+      if (Array.isArray(langMap[locale])) {
+        mutated[locale] = langMap[locale].map((element) => mutation(element, locale));
+      } else {
+        mutated[locale] = mutation(langMap[locale], locale);
+      }
+    }
+
+    return mutated;
+  }
+
   async createAndPublish() {
+    // console.log('this.fields', JSON.stringify(this.fields, null, 2));
     // console.log('createAndPublish', this.constructor.contentTypeId, JSON.stringify(this.fields, null, 2));
     pad.log(`- createAndPublish ${this.constructor.contentTypeId}`);
-    // const entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
-    // await entry.publish();
-    // this.sys = entry.sys;
+    const entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
+    try {
+      await entry.publish();
+    } catch (e) {
+      console.log(`ERROR: ${e.message}`);
+      process.exit(1);
+    }
+    this.sys = entry.sys;
   }
 
   getField(fieldName) {
@@ -21,13 +42,13 @@ class ContentfulEntry {
   }
 
   dateField(langMap) {
-    return this.mutateLangMapValues(langMap, (value) =>
+    return this.constructor.mutateLangMapValues(langMap, (value) =>
       new Date(value)
     );
   }
 
   linkField(langMap, type = 'Entry') {
-    return this.mutateLangMapValues(langMap, (value) => {
+    return this.constructor.mutateLangMapValues(langMap, (value) => {
       return {
         sys: {
           type: 'Link',
@@ -38,21 +59,8 @@ class ContentfulEntry {
     });
   }
 
-  mutateLangMapValues(value, mutation) {
-    const langMap = (value instanceof LangMap) ? value : new LangMap(value);
-    const mutated = {};
-    for (const locale in langMap) {
-      if (Array.isArray(langMap[locale])) {
-        mutated[locale] = langMap[locale].map((element) => mutation(element));
-      } else {
-        mutated[locale] = mutation(langMap[locale]);
-      }
-    }
-    return mutated;
-  }
-
   textField(langMap, options = {}) {
-    return this.mutateLangMapValues(langMap, (value) =>
+    return this.constructor.mutateLangMapValues(langMap, (value) =>
       // TODO: append ellipsis if truncated
       (typeof value === 'string' && options.max) ? value.slice(0, options.max) : value
     );
@@ -67,27 +75,25 @@ class ContentfulEntry {
   }
 
   licenseField(langMap) {
-    return this.mutateLangMapValues(langMap, (value) =>
-      licenseMap[value]
-    );
+    return this.constructor.mutateLangMapValues(langMap, (value) => licenseMap[value]);
+  }
+
+  trimField(langMap) {
+    return this.constructor.mutateLangMapValues(langMap, (value) => value.trim());
   }
 
   // TODO: replace any h1 elements with h2
   markdownTextField(langMap) {
-    return this.mutateLangMapValues(langMap, (value) => {
-      let markdown = turndownService.turndown(value);
+    return this.constructor.mutateLangMapValues(langMap, (value) => {
+      return turndownService.turndown(value);
+    });
+  }
 
-      // FIXME: consider whether this still belongs here given the essence handlers in create.js
-      // switch (name) {
-      //   case 'quote':
-      //     markdown = `> ${markdown}`;
-      //     break;
-      //   case 'quotee':
-      //     markdown = `<cite>${markdown}</cite>`;
-      //     break;
-      // }
-
-      return markdown;
+  appendToField(fieldName, appendix, appender) {
+    this[fieldName] = this.constructor.mutateLangMapValues(appendix, (value, locale) => {
+      let fieldValue = this[fieldName][locale] || '';
+      if (value) fieldValue = fieldValue + (appender ? appender(value) : value);
+      return fieldValue;
     });
   }
 
@@ -145,13 +151,39 @@ class ExhibitionChapterPageEntry extends ContentfulEntry {
 }
 
 class RichTextEntry extends ContentfulEntry {
+  constructor() {
+    super();
+    this.text = new LangMap;
+  }
+
   static get contentTypeId() {
     return 'richText';
   }
 
+  addQuote(quote) {
+    this.appendToField('text', quote, ((value) => `<blockquote>${value}</blockquote>`));
+  }
+
+  addQuotee(quotee) {
+    this.appendToField('text', quotee, ((value) => `<p><cite>${value}</cite></p>`));
+  }
+
+  addTitle(title) {
+    this.appendToField('text', title, ((value) => `<h2>${value}</h2>`));
+  }
+
+  addSubTitle(subTitle) {
+    this.appendToField('text', subTitle, ((value) => `<p><strong>${value}</strong></p>`));
+  }
+
+  addHtml(html) {
+    this.appendToField('text', html);
+  }
+
   get fields() {
     return {
-      headline: this.shortTextField(this.headline),
+      // FIXME: default to something more informative of context. text, truncated?
+      headline: this.shortTextField(this.headline || 'Exhibition rich text'),
       text: this.longTextField(this.markdownTextField(this.text))
     };
   }
@@ -164,8 +196,27 @@ class EmbedEntry extends ContentfulEntry {
 
   get fields() {
     return {
+      // FIXME: default to something more informative of context. url from embed?
+      name: this.shortTextField(this.name || 'Exhibition embed'),
+      embed: this.longTextField(this.embed)
+    };
+  }
+}
+
+class ImageComparisonEntry extends ContentfulEntry {
+  static get contentTypeId() {
+    return 'imageComparison';
+  }
+
+  constructor() {
+    super();
+    this.hasPart = [];
+  }
+
+  get fields() {
+    return {
       name: this.shortTextField(this.name),
-      embed: this.longText(this.embed)
+      hasPart: this.linkField(this.hasPart)
     };
   }
 }
@@ -183,7 +234,7 @@ class ImageWithAttributionEntry extends ContentfulEntry {
       provider: this.shortTextField(this.provider),
       license: this.licenseField(this.license),
       // FIXME: convert to data.europeana.eu url, or local portal url, or record ID?
-      url: this.shortTextField(this.url)
+      url: this.shortTextField(this.trimField(this.url))
     };
   }
 }
@@ -209,6 +260,7 @@ module.exports = {
   ExhibitionPageEntry,
   ExhibitionChapterPageEntry,
   EmbedEntry,
+  ImageComparisonEntry,
   ImageWithAttributionEntry,
   RichTextEntry,
   licenseMap

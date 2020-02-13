@@ -2,9 +2,14 @@ require('dotenv').config();
 
 const { pgClient, contentfulManagementClient } = require('../support/config');
 const { assetExists, assetIdForImage } = require('./assets');
-const { wrapLocale } = require('../support/utils');
+const { wrapLocale, pad } = require('../support/utils');
+
+const help = () => {
+  pad.log('Usage: npm run exhibition images');
+};
 
 const imageServer = process.env['ALCHEMY_IMAGE_SERVER'];
+// TODO: reuse config
 const maxLengthShort = 255;
 
 let contentfulEnvironment;
@@ -68,5 +73,6 @@ const cli = async() => {
 
 module.exports = {
   migrateImages,
-  cli
+  cli,
+  help
 };

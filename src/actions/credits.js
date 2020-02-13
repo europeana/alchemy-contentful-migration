@@ -1,6 +1,10 @@
 const { assetExists, assetIdForImage, loadAssetIds } = require('./assets');
 const { pgClient, turndownService, contentfulManagementClient } = require('../support/config');
-const { localeMap } = require('../support/utils');
+const { localeMap, pad } = require('../support/utils');
+
+const help = () => {
+  pad.log('Usage: npm run exhibition credits');
+};
 
 let contentfulConnection;
 
@@ -160,5 +164,6 @@ const cli = async() => {
 
 module.exports = {
   migrateCredits,
-  cli
+  cli,
+  help
 };

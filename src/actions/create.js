@@ -1,20 +1,24 @@
 const {
   pgClient, contentfulManagement, defaultLocale
 } = require('../support/config');
-const { load } = require('./load');
-const { pad } = require('../support/utils');
-const { assetIdForPicture } = require('./assets');
+const { pad, LangMap } = require('../support/utils');
 const {
   ExhibitionPageEntry, ExhibitionChapterPageEntry, ImageWithAttributionEntry,
-  RichTextEntry, EmbedEntry
+  RichTextEntry, EmbedEntry, ImageComparisonEntry
 } = require('../support/entry');
 
+const { assetIdForPicture } = require('./assets');
+const { load } = require('./load');
+const { translate } = require('./translate');
+
 const help = () => {
-  console.log('Usage: npm run exhibition create <urlname>');
+  pad.log('Usage: npm run exhibition create <urlname>');
 };
 
 const create = async(urlname) =>  {
   const pageData = await load(urlname, defaultLocale.alchemy);
+  await translate(pageData);
+
   pad.log(`Creating entry for page: ${urlname}`);
   const contentTypeId = pageData.depth === 2 ? 'exhibitionPage' : 'exhibitionChapterPage';
   pad.log(`- contentTypeId: ${contentTypeId}`);
@@ -29,11 +33,14 @@ const create = async(urlname) =>  {
   }
 
   entry.description = pageData['meta_description'];
-  entry.identifier = pageData.urlname;
   if (contentTypeId === 'exhibitionPage') {
+    entry.identifier = pageData.urlname;
     entry.datePublished = pageData.public_on;
+  } else {
+    entry.identifier = pageData.urlname.split('/')[1];
   }
   // TODO: credits?
+  // TODO: h1 extraction from rich text?
 
   pad.increase();
   for (const element of pageData.elements) {
@@ -66,21 +73,28 @@ const elementHandlers = {
       entry.primaryImageOfPage = primaryImageOfPage.sys.id;
     }
   },
-  // TODO: merge consecutive rich text entries (before or after creation?)
-  //       or are all cases handled by quote and rich_image handlers?
-  // TODO: image_compare
+  // TODO: merge consecutive rich text entries
   exhibitionChapterPage: {
     intro: async(essences, entry) => {
       // FIXME: may be empty, but must be present on chapter page content entries
       entry.name = essences.get('title').data.body;
       entry.headline = essences.get('sub_title').data.body;
-      const richText = await createRichText(essences.get('body').data.body);
-      entry.hasPart.push(richText.sys.id);
+
+      const body = essences.get('body').data.body;
+      if (!body.isEmpty()) {
+        const richText = new RichTextEntry;
+        richText.text = essences.get('body').data.body;
+        await richText.createAndPublish();
+        entry.hasPart.push(richText.sys.id);
+      }
+
       const primaryImageOfPage = await createImageWithAttribution(essences.get('image'), essences.get('image_credit'));
       entry.primaryImageOfPage = primaryImageOfPage.sys.id;
     },
     embed: async(essences, entry) => {
-      const embed = await createEmbed(essences.get('embed').data.source);
+      const embed = new EmbedEntry;
+      embed.embed = essences.get('embed').data.source;
+      await embed.createAndPublish();
       entry.hasPart.push(embed.sys.id);
     },
     image: async(essences, entry) => {
@@ -91,53 +105,44 @@ const elementHandlers = {
       const image = await createImageWithAttribution(essences.get('image'), essences.get('image_credit'));
       entry.hasPart.push(image.sys.id);
 
-      const essenceTexts = {
-        title: essences.get('title').data.body,
-        subTitle: essences.get('sub_title').data.body,
-        body: essences.get('body').data.body,
-        quote: essences.get('quote').data.body,
-        quotee: essences.get('quotee').data.body
-      };
-
-      const htmlTexts = [];
-      // FIXME: this needs to work on lang maps. make it a function of RichText? e.g. `importFromRichImageEssences()`
-      // FIXME: this also needs to ignore empty strings
-      if (essenceTexts.title) htmlTexts.push(`<h2>${essenceTexts.title}</h2>`);
-      if (essenceTexts.subTitle) htmlTexts.push(`<p><strong>${essenceTexts.subTitle}</strong></p>`);
-      if (essenceTexts.body) htmlTexts.push(essenceTexts.body);
-      if (essenceTexts.quote) htmlTexts.push(`<blockquote>${essenceTexts.quote}</blockquote>`);
-      if (essenceTexts.quotee) htmlTexts.push(`<p><cite>${essenceTexts.quotee}</cite></p>`);
-
-      const richText = await createRichText(htmlTexts.join('\n'));
+      const richText = new RichTextEntry;
+      richText.addTitle(essences.get('title').data.body);
+      richText.addSubTitle(essences.get('sub_title').data.body);
+      richText.addQuote(essences.get('quote').data.body);
+      richText.addQuotee(essences.get('quotee').data.body);
+      richText.addHtml(essences.get('body').data.body);
+      await richText.createAndPublish();
       entry.hasPart.push(richText.sys.id);
     },
+    'image_compare': async(essences, entry) => {
+      const imageComparison = new ImageComparisonEntry;
+
+      const image1 = await createImageWithAttribution(essences.get('image_1'), essences.get('image_1_credit'));
+      imageComparison.hasPart.push(image1.sys.id);
+      const image2 = await createImageWithAttribution(essences.get('image_2'), essences.get('image_2_credit'));
+      imageComparison.hasPart.push(image2.sys.id);
+
+      imageComparison.name = essences.get('image_1_credit').data.title;
+      imageComparison.appendToField('name', new LangMap(' / '));
+      imageComparison.appendToField('name', essences.get('image_2_credit').data.title);
+
+      await imageComparison.createAndPublish();
+      entry.hasPart.push(imageComparison.sys.id);
+    },
     quote: async(essences, entry) => {
-      // TODO. see rich_image. example: heritage-at-risk/rebuilding-notre-dame
+      const richText = new RichTextEntry;
+      richText.addQuote(essences.get('quote').data.body);
+      richText.addQuotee(essences.get('quotee').data.body);
+      await richText.createAndPublish();
+      entry.hasPart.push(richText.sys.id);
     },
     text: async(essences, entry) => {
-      const richText = await createRichText(essences.get('body').data.body);
+      const richText = new RichTextEntry;
+      richText.text = essences.get('body').data.body;
+      await richText.createAndPublish();
       entry.hasPart.push(richText.sys.id);
     }
   }
-};
-
-const createRichText = async(text) => {
-  const entry = new RichTextEntry;
-  entry.headline = 'Exhibition Content'; // FIXME
-  entry.text = text;
-
-  await entry.createAndPublish();
-
-  return entry;
-};
-
-const createEmbed = async(embed) => {
-  const entry = new EmbedEntry;
-  entry.embed = embed;
-
-  await entry.createAndPublish();
-
-  return entry;
 };
 
 const createImageWithAttribution = async(image, credit) => {
@@ -161,7 +166,7 @@ const cli = async(args) => {
   const result = await(create(args[0]));
 
   await pgClient.end();
-  console.log(JSON.stringify(result.sys.id, null, 2));
+  console.log('Created', result.sys);
 };
 
 module.exports = {

@@ -2,7 +2,7 @@ const { pgClient } = require('../support/config');
 const { LangMap, localeMap, pad } = require('../support/utils');
 
 const help = () => {
-  console.log('Usage: npm run exhibition load <urlname> [locale]');
+  pad.log('Usage: npm run exhibition load <urlname> [locale]');
 };
 
 const load = async(urlname, languageCode = 'en') => {
@@ -35,82 +35,6 @@ const getEssencesWithData = async(essences, locale) => {
   }
 
   return essencesWithData;
-};
-
-const translate = async(page) => {
-  for (const otherLanguage of page['other_language_codes']) {
-    await translateTo(page, otherLanguage);
-  }
-  return page;
-};
-
-// TODO: move to own action file, translate.js
-const translateTo = async(page, toLanguageCode) => {
-  const fromLocale = localeMap[page['language_code']];
-  const toLocale = localeMap[toLanguageCode];
-
-  pad.log(`Translating "${page.urlname}" from "${fromLocale}" to "${toLocale}"...`);
-
-  const translatedPage = await load(page.urlname, toLanguageCode);
-
-  try {
-    pageTranslationAligned(page, translatedPage);
-    pad.log('  ...translations align');
-  } catch (e) {
-    pad.log(`  ...translations do not align: ${e.message}`);
-    return;
-  }
-
-  if (page['meta_description'][fromLocale] !== translatedPage['meta_description'][toLocale]) {
-    page['meta_description'][toLocale] = translatedPage['meta_description'][toLocale];
-  }
-
-  for (let elementIndex = 0; elementIndex < page.elements.length; elementIndex++) {
-    const element = page.elements[elementIndex];
-    const translatedElement = translatedPage.elements[elementIndex];
-
-    for (let essenceIndex = 0; essenceIndex < element.essences.length; essenceIndex++) {
-      const essence = element.essences[essenceIndex];
-
-      const translatedEssence = translatedElement.essences[essenceIndex];
-
-      for (const name in essence.data) {
-        if (essence.data[name][fromLocale] !== translatedEssence.data[name][toLocale])
-          essence.data[name][toLocale] = translatedEssence.data[name][toLocale];
-      }
-    }
-  }
-
-  // if (!page.translatedTo) page.translatedTo = [];
-  // page.translatedTo.push(toLocale);
-
-  return page;
-};
-
-// TODO: custom Error class to prevent false positive catches in `translate`
-const pageTranslationAligned = (page, translatedPage) => {
-  if (page.elements.length !== translatedPage.elements.length)
-    throw new Error(`Element count mismatch: ${page.elements.length}, ${translatedPage.elements.length}`);
-
-  for (let elementIndex = 0; elementIndex < page.elements.length; elementIndex++) {
-    const element = page.elements[elementIndex];
-    const translatedElement = translatedPage.elements[elementIndex];
-
-    if (element.name !== translatedElement.name)
-      throw new Error(`Element name mismatch: ${element.name}, ${translatedElement.name}`);
-    if (element.essences.length !== translatedElement.essences.length)
-      throw new Error(`Element "${element.name}" essence count mismatch: ${element.essences.length}, ${translatedElement.essences.length}`);
-
-    for (let essenceIndex = 0; essenceIndex < element.essences.length; essenceIndex++) {
-      const essence = element.essences[essenceIndex];
-      const translatedEssence = translatedElement.essences[essenceIndex];
-
-      if (essence.name !== translatedEssence.name)
-        throw new Error(`Element "${element.name}" essence name mismatch: ${essence.name}, ${translatedEssence.name}`);
-    }
-  }
-
-  return true;
 };
 
 const findEssenceByName = function(name) {
@@ -146,8 +70,10 @@ const getPageIdFromUrlName = async(urlname, locale) => {
 const cli = async(args) => {
   await pgClient.connect();
 
-  const data = await(load(args[0], args[1]));
-  await translate(data);
+  const urlname = args[0];
+  const languageCode = args[1];
+
+  const data = await(load(urlname, languageCode));
 
   await pgClient.end();
   console.log(JSON.stringify(data, null, 2));

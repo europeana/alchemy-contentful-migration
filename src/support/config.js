@@ -29,6 +29,7 @@ const contentfulPreviewClient = contentful.createClient({
 
 const TurndownService = require('turndown');
 const turndownService = new TurndownService();
+turndownService.keep(['cite']);
 
 module.exports = {
   defaultLocale: {

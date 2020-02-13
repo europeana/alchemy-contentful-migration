@@ -3,25 +3,26 @@ const fs = require('fs');
 const path = require('path');
 
 const { pgClient, contentfulPreviewClient } = require('../support/config');
+const { pad } = require('../support/utils');
 
 const cacheFilePath = path.resolve(__dirname, '../../tmp/assetIds.json');
 
 let assetIds;
 
 const help = () => {
-  console.log('Usage: npm run exhibition assets <list|cache>');
+  pad.log('Usage: npm run exhibition assets <list|cache>');
 };
 
 // Fetch all asset IDs via the preview API, for later use by `assetExists`
 const loadAssetIds = async() => {
-  console.log('Loading asset IDs...');
+  pad.log('Loading asset IDs...');
 
   assetIds = await loadAssetIdsFromCache();
   if (assetIds) {
-    console.log(`  ... loaded from cache file ${cacheFilePath}`);
+    pad.log(`  ... loaded from cache file ${cacheFilePath}`);
   } else {
     assetIds = await loadAssetIdsFromContentful();
-    console.log('  ... loaded from Contentful');
+    pad.log('  ... loaded from Contentful');
   }
 
   return assetIds;
@@ -30,7 +31,7 @@ const loadAssetIds = async() => {
 const cache = async() => {
   const assetIds = await loadAssetIdsFromContentful();
   fs.writeFileSync(cacheFilePath, JSON.stringify(assetIds));
-  console.log(`Asset ID cache written to ${cacheFilePath}`);
+  pad.log(`Asset ID cache written to ${cacheFilePath}`);
 };
 
 const loadAssetIdsFromCache = () => {
@@ -89,7 +90,7 @@ const cli = async(args) => {
       break;
     case 'list':
       await loadAssetIds();
-      console.log(JSON.stringify(assetIds));
+      pad.log(JSON.stringify(assetIds));
       break;
     default:
       help();
