@@ -1,7 +1,7 @@
 const { pgClient, contentfulManagement } = require('../support/config');
 const { pad } = require('../support/utils');
 
-const { entries } = require('./entries');
+const { create } = require('./create');
 const { images } = require('./images');
 const { cacheAssetIds } = require('./assets');
 const { credits } = require('./credits');
@@ -16,7 +16,7 @@ const cli = async() => {
 
   await images();
   await cacheAssetIds();
-  await entries();
+  await create();
   await credits();
 
   await pgClient.end();
