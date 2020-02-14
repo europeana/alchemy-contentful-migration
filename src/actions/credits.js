@@ -1,14 +1,12 @@
 // TODO: move into create script
 
 const { assetExists, assetIdForImage, loadAssetIds } = require('./assets');
-const { pgClient, turndownService, contentfulManagementClient } = require('../support/config');
+const { pgClient, turndownService, contentfulManagement } = require('../support/config');
 const { localeMap, pad } = require('../support/utils');
 
 const help = () => {
   pad.log('Usage: npm run exhibition credits');
 };
-
-let contentfulConnection;
 
 const fetchEssence = async(type, id) => {
   let sql;
@@ -47,7 +45,7 @@ const contentfulAssetForAlchemyPicture = async(imageFileUid) => {
   const assetId = assetIdForImage(imageFileUid);
   if (!await assetExists(assetId)) return '';
 
-  const asset = await contentfulConnection.getAsset(assetId);
+  const asset = await contentfulManagement.environment.getAsset(assetId);
 
   return turndownService.turndown(`<img src="https:${asset.fields.file['en-GB'].url}"/>`);
 };
@@ -85,7 +83,7 @@ const creditExhibition = async(urlname, rows) => {
   pad.log(urlname);
   const exhibitionSlug = urlname.split('/')[0];
 
-  const entries = await contentfulConnection.getEntries({
+  const entries = await contentfulManagement.environment.getEntries({
     'content_type': 'exhibitionPage',
     'locale': 'en-GB',
     'fields.identifier': exhibitionSlug,
@@ -112,10 +110,10 @@ const creditExhibition = async(urlname, rows) => {
 };
 
 const migrateCredits = async() => {
-  contentfulConnection = await contentfulManagementClient.connect();
-  await loadAssetIds();
-
+  await contentfulManagement.connect();
   await pgClient.connect();
+
+  await loadAssetIds();
 
   const result = await pgClient.query(pagesSql);
 

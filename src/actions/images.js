@@ -46,9 +46,6 @@ const migrateImage = async(picture) => {
 };
 
 const migrateImages = async() => {
-  await contentfulManagement.connect();
-
-  await pgClient.connect();
   const res = await pgClient.query(`
     SELECT DISTINCT ON (ap.id, ap.image_file_uid, ap.image_file_format, ap.image_file_name) aec.title, ap.image_file_uid, ap.image_file_format, ap.image_file_name
     FROM alchemy_essence_pictures aep
@@ -58,7 +55,6 @@ const migrateImages = async() => {
     LEFT JOIN alchemy_contents acc ON acc.element_id=ae.id AND acc.essence_type='Alchemy::EssenceCredit'
     LEFT JOIN alchemy_essence_credits aec ON acc.essence_id=aec.id
   `);
-  await pgClient.end();
 
   for (const picture of res.rows) {
     await migrateImage(picture);
@@ -66,7 +62,12 @@ const migrateImages = async() => {
 };
 
 const cli = async() => {
-  migrateImages();
+  await contentfulManagement.connect();
+  await pgClient.connect();
+
+  await migrateImages();
+
+  await pgClient.end();
 };
 
 module.exports = {
