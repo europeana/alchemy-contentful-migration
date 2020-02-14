@@ -1,3 +1,5 @@
+// TODO: move into create script
+
 const { assetExists, assetIdForImage, loadAssetIds } = require('./assets');
 const { pgClient, turndownService, contentfulManagementClient } = require('../support/config');
 const { localeMap, pad } = require('../support/utils');
@@ -108,7 +110,7 @@ const creditsFromRow = async(rowEssences) => {
 };
 
 const creditExhibition = async(urlname, rows) => {
-  console.log(urlname);
+  pad.log(urlname);
   const exhibitionSlug = urlname.split('/')[0];
 
   const entries = await contentfulConnection.getEntries({
@@ -124,7 +126,7 @@ const creditExhibition = async(urlname, rows) => {
 
   for (const locale in rows) {
     const contentfulLocale = localeMap[locale];
-    console.log(`- ${locale} => ${contentfulLocale}`);
+    pad.log(`- ${locale} => ${contentfulLocale}`);
     const credits = await creditsFromRow(rows[locale]);
     entry.fields.credits[contentfulLocale] = credits;
   }
@@ -133,7 +135,7 @@ const creditExhibition = async(urlname, rows) => {
   try {
     await updated.publish();
   } catch (e) {
-    console.log('Publish failed: ', e);
+    pad.log('Publish failed: ', e);
   }
 };
 

@@ -24,12 +24,12 @@ class Entry {
   }
 
   async createAndPublish() {
-    pad.log(`- createAndPublish ${this.constructor.contentTypeId}`);
+    pad.log(`- creating \`${this.constructor.contentTypeId}\``);
     pad.increase();
     let entry;
     try {
       entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
-      await entry.publish();
+      entry.publish();
     } catch (e) {
       pad.log(`- WARNING: ${e.message}`);
     }

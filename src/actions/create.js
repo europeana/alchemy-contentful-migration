@@ -166,7 +166,7 @@ const cli = async(args) => {
   const result = await(create(args[0]));
 
   await pgClient.end();
-  console.log('Created', result.sys);
+  console.log(`Created entry ${result.sys.id}`);
 };
 
 module.exports = {

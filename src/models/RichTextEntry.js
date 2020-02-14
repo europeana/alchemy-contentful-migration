@@ -32,10 +32,18 @@ class RichTextEntry extends Entry {
     this.appendToField('text', html);
   }
 
+  headlineFromText() {
+    return this.constructor.mutateLangMapValues(this.text, (value) => {
+      const h1Match = value.match(/<h1.*?>(.*?)<\/h1.*?>/i);
+      if (h1Match) return h1Match[1];
+      // FIXME: default to something more informative of context. text, truncated?
+      return 'Exhibition rich text';
+    });
+  }
+
   get fields() {
     return {
-      // FIXME: default to something more informative of context. text, truncated?
-      headline: this.shortTextField(this.headline || 'Exhibition rich text'),
+      headline: this.shortTextField(this.headline ? this.headline : this.headlineFromText()),
       text: this.longTextField(this.markdownTextField(this.text))
     };
   }

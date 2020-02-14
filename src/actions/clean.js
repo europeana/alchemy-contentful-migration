@@ -92,7 +92,6 @@ const clean = async() => {
 
 const cleanEntry = async(entry) => {
   pad.log(`${entry.sys.contentType.sys.id}: ${entry.sys.id}`);
-  pad.log('- cleaning');
 
   // Clean any linked entries first
   pad.increase();
