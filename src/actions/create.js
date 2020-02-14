@@ -5,7 +5,7 @@ const { pad, LangMap } = require('../support/utils');
 const {
   ExhibitionPageEntry, ExhibitionChapterPageEntry, ImageWithAttributionEntry,
   RichTextEntry, EmbedEntry, ImageComparisonEntry
-} = require('../support/entry');
+} = require('../models');
 
 const { assetIdForPicture } = require('./assets');
 const { load } = require('./load');
@@ -121,6 +121,7 @@ const elementHandlers = {
       const image2 = await createImageWithAttribution(essences.get('image_2'), essences.get('image_2_credit'));
       imageComparison.hasPart.push(image2.sys.id);
 
+      // TODO: move into a getter on the entry class
       imageComparison.name = essences.get('image_1_credit').data.title;
       imageComparison.appendToField('name', new LangMap(' / '));
       imageComparison.appendToField('name', essences.get('image_2_credit').data.title);
