@@ -1,19 +1,16 @@
 require('dotenv').config();
 
-const { pgClient, contentfulManagementClient } = require('../support/config');
+const { pgClient, contentfulManagement, maxLengthShort } = require('../support/config');
 const { assetExists, assetIdForImage } = require('./assets');
-const { wrapLocale, pad } = require('../support/utils');
+const { LangMap, pad } = require('../support/utils');
 
 const help = () => {
   pad.log('Usage: npm run exhibition images');
 };
 
 const imageServer = process.env['ALCHEMY_IMAGE_SERVER'];
-// TODO: reuse config
-const maxLengthShort = 255;
 
-let contentfulEnvironment;
-
+// TODO: create model class?
 const migrateImage = async(picture) => {
   const uid = picture.image_file_uid;
   const assetId = await assetIdForImage(uid);
@@ -27,10 +24,11 @@ const migrateImage = async(picture) => {
   try {
     // Assets may not be published without a title. Fallback to file name.
     const title = (!picture.title || picture.title === '') ? picture.image_file_name : picture.title;
-    const asset = await contentfulEnvironment.createAssetWithId(assetId, {
+    const asset = await contentfulManagement.environment.createAssetWithId(assetId, {
       fields: {
-        title: wrapLocale(title, { max: maxLengthShort }),
-        file: wrapLocale({
+        // TODO: truncate to maxLengthShort
+        title: new LangMap(title.slice(0, maxLengthShort)),
+        file: new LangMap({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
           fileName: picture.image_file_name,
           upload: `${imageServer}${encodeURIComponent(uid)}`
@@ -48,7 +46,7 @@ const migrateImage = async(picture) => {
 };
 
 const migrateImages = async() => {
-  contentfulEnvironment = await contentfulManagementClient.connect();
+  await contentfulManagement.connect();
 
   await pgClient.connect();
   const res = await pgClient.query(`

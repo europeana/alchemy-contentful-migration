@@ -1,8 +1,8 @@
 // TODO `analyse` function to report on the translation status of all exhibitions
 
-const { pgClient, defaultLocale } = require('../support/config');
+const { pgClient } = require('../support/config');
 const { localeMap, pad } = require('../support/utils');
-const { load } = require('./load');
+const { load, getExhibitionPageUrlnames } = require('./load');
 
 const help = () => {
   pad.log('Usage: npm run exhibition translate [urlname]');
@@ -83,17 +83,6 @@ const pageTranslationAligned = (page, translatedPage) => {
   }
 
   return true;
-};
-
-const getExhibitionPageUrlnames = async() => {
-  const sql = `
-    select urlname
-    from alchemy_pages ap
-    where ap.page_layout = 'exhibition_theme_page' and ap.depth=2 and ap.published_at is not null and ap.language_code=$1
-    order by urlname
-  `;
-  const result = await pgClient.query(sql, [defaultLocale.alchemy]);
-  return result.rows.map((row) => row.urlname);
 };
 
 const translateOne = async(urlname) => {

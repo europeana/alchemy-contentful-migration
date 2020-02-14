@@ -8,11 +8,11 @@ const {
 } = require('../models');
 
 const { assetIdForPicture } = require('./assets');
-const { load } = require('./load');
+const { load, getExhibitionPageUrlnames } = require('./load');
 const { translate } = require('./translate');
 
 const help = () => {
-  pad.log('Usage: npm run exhibition create <urlname>');
+  pad.log('Usage: npm run exhibition create [urlname]');
 };
 
 const create = async(urlname) =>  {
@@ -37,10 +37,9 @@ const create = async(urlname) =>  {
     entry.identifier = pageData.urlname;
     entry.datePublished = pageData.public_on;
   } else {
-    entry.identifier = pageData.urlname.split('/')[1];
+    entry.identifier = pageData.urlname.split('/')[1] || pageData.urlname;
   }
   // TODO: credits?
-  // TODO: h1 extraction from rich text?
 
   pad.increase();
   for (const element of pageData.elements) {
@@ -77,6 +76,10 @@ const elementHandlers = {
       // FIXME: may be empty, but must be present on chapter page content entries
       //        - is this true?
       entry.name = essences.get('title').data.body;
+      if (entry.name.isEmpty()) {
+        pad.log('WARNING: title is empty; falling back to URL slug');
+        entry.name = entry.identifier;
+      }
       entry.headline = essences.get('sub_title').data.body;
 
       const body = essences.get('body').data.body;
@@ -163,10 +166,18 @@ const cli = async(args) => {
   await contentfulManagement.connect();
   await pgClient.connect();
 
-  const result = await(create(args[0]));
+
+  if (args[0]) {
+    await(create(args[0]));
+  } else {
+    const urlnames = await getExhibitionPageUrlnames();
+
+    for (const urlname of urlnames) {
+      await create(urlname);
+    }
+  }
 
   await pgClient.end();
-  console.log(`Created entry ${result.sys.id}`);
 };
 
 module.exports = {

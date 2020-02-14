@@ -29,9 +29,10 @@ class Entry {
     let entry;
     try {
       entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
-      entry.publish();
+      await entry.publish();
     } catch (e) {
-      pad.log(`- WARNING: ${e.message}`);
+      pad.log(`- ERROR: ${e.message}`);
+      process.exit(1);
     }
     pad.decrease();
     this.sys = entry.sys;
@@ -92,9 +93,15 @@ class Entry {
   }
 
   appendToField(fieldName, appendix, appender) {
-    this[fieldName] = this.constructor.mutateLangMapValues(appendix, (value, locale) => {
+    const withAppendix = new LangMap;
+    for (const locale of Object.keys(appendix).concat(Object.keys(this[fieldName]))) {
+      withAppendix[locale] = '';
+    }
+
+    this[fieldName] = this.constructor.mutateLangMapValues(withAppendix, (value, locale) => {
       let fieldValue = this[fieldName][locale] || '';
-      if (value) fieldValue = fieldValue + (appender ? appender(value) : value);
+      const appendValue = appendix[locale];
+      if (appendValue) fieldValue = fieldValue + (appender ? appender(appendValue) : appendValue);
       return fieldValue;
     });
   }

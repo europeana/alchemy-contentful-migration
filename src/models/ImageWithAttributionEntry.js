@@ -5,11 +5,16 @@ class ImageWithAttributionEntry extends Entry {
     return 'imageWithAttribution';
   }
 
-  europeanaItemUri(langMap) {
+  normaliseUrl(langMap) {
     return this.constructor.mutateLangMapValues(langMap, (value) => {
       if (typeof value !== 'string') return value;
+
       const itemIdMatch = value.match(/europeana\.eu\/portal\/([a-z][a-z]\/)?record(\/[0-9]+\/[^/.#$]+)/);
-      return itemIdMatch ? `http://data.europeana.eu/item${itemIdMatch[2]}` : value;
+      if (itemIdMatch) return `http://data.europeana.eu/item${itemIdMatch[2]}`;
+
+      if (value.startsWith('www.')) return `https://${value}`;
+
+      return (value.startsWith('http://') || value.startsWith('https://')) ? value : null;
     });
   }
 
@@ -20,7 +25,7 @@ class ImageWithAttributionEntry extends Entry {
       creator: this.shortTextField(this.creator),
       provider: this.shortTextField(this.provider),
       license: this.licenseField(this.license),
-      url: this.shortTextField(this.europeanaItemUri(this.trimField(this.url)))
+      url: this.shortTextField(this.normaliseUrl(this.trimField(this.url)))
     };
   }
 }

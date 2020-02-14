@@ -10,34 +10,6 @@ const help = () => {
 
 let contentfulConnection;
 
-const pagesSql = `
-  select
-    ap.urlname,
-    ap.language_code,
-    array(
-      select
-        json_build_object(
-          'id', ac.essence_id, 'type', ac.essence_type
-        ) essence
-      from
-        alchemy_elements ae
-        inner join alchemy_contents ac on ac.element_id = ae.id
-      where
-        ap.id = ae.page_id
-      order by
-        ae.position,
-        ac.position
-    ) essences
-  from
-    alchemy_pages ap
-  where
-    depth > 1
-    and page_layout = 'exhibition_credit_page'
-  order by
-    ap.urlname,
-    ap.language_code
-`;
-
 const fetchEssence = async(type, id) => {
   let sql;
 
@@ -164,8 +136,36 @@ const cli = async() => {
   await migrateCredits();
 };
 
+const pagesSql = `
+  select
+    ap.urlname,
+    ap.language_code,
+    array(
+      select
+        json_build_object(
+          'id', ac.essence_id, 'type', ac.essence_type
+        ) essence
+      from
+        alchemy_elements ae
+        inner join alchemy_contents ac on ac.element_id = ae.id
+      where
+        ap.id = ae.page_id
+      order by
+        ae.position,
+        ac.position
+    ) essences
+  from
+    alchemy_pages ap
+  where
+    depth > 1
+    and page_layout = 'exhibition_credit_page'
+  order by
+    ap.urlname,
+    ap.language_code
+`;
+
 module.exports = {
-  migrateCredits,
+  credits: migrateCredits,
   cli,
   help
 };

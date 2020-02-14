@@ -33,6 +33,13 @@ For an overview of the available CLI commands, run:
 npm run exhibition help
 ```
 
+### Migrate
+
+To perform a full migration of assets and entries:
+```
+npm run exhibition migrate
+```
+
 ### Images
 
 To migrate just the images from Alchemy into Contentful as assets, run:
@@ -44,11 +51,16 @@ The sys ID of the asset will be derived from the MD5 hash of the Alchemy picture
 UID, and only be stored if it does not already exist, so can be stopped and
 resumed without starting over.
 
-### Migrate
+### Create
 
 To create content entries in Contentful for all exhibitions, with translations:
 ```
-npm run exhibition migrate
+npm run exhibition create
+```
+
+Or for a single exhibition:
+```
+npm run exhibition create <urlname>
 ```
 
 ### Credits

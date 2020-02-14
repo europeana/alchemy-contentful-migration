@@ -1,4 +1,4 @@
-const { pgClient } = require('../support/config');
+const { pgClient, defaultLocale } = require('../support/config');
 const { LangMap, localeMap, pad } = require('../support/utils');
 
 const help = () => {
@@ -65,6 +65,24 @@ const getPageIdFromUrlName = async(urlname, locale) => {
 
   const result = await pgClient.query(sql, [urlname, locale]);
   return result.rows[0].id;
+};
+
+const getExhibitionPageUrlnames = async() => {
+  const sql = `
+    select
+      urlname
+    from
+      alchemy_pages ap
+    where
+      ap.page_layout = 'exhibition_theme_page'
+      and ap.depth = 2
+      and ap.public_on is not null
+      and ap.language_code = $1
+    order by
+      ap.public_on asc
+  `;
+  const result = await pgClient.query(sql, [defaultLocale.alchemy]);
+  return result.rows.map((row) => row.urlname);
 };
 
 const cli = async(args) => {
@@ -161,6 +179,7 @@ const pageContentQuerySql = `
 
 module.exports = {
   getPageIdFromUrlName,
+  getExhibitionPageUrlnames,
   load,
   cli,
   help

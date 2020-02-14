@@ -28,7 +28,7 @@ const loadAssetIds = async() => {
   return assetIds;
 };
 
-const cache = async() => {
+const cacheAssetIds = async() => {
   const assetIds = await loadAssetIdsFromContentful();
   fs.writeFileSync(cacheFilePath, JSON.stringify(assetIds));
   pad.log(`Asset ID cache written to ${cacheFilePath}`);
@@ -86,7 +86,7 @@ const assetIdForPicture = async(pictureId) => {
 const cli = async(args) => {
   switch (args[0]) {
     case 'cache':
-      cache();
+      cacheAssetIds();
       break;
     case 'list':
       await loadAssetIds();
@@ -103,5 +103,6 @@ module.exports = {
   assetExists,
   assetIdForImage,
   assetIdForPicture,
+  cacheAssetIds,
   loadAssetIds
 };
