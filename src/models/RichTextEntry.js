@@ -34,7 +34,7 @@ class RichTextEntry extends Entry {
 
   headlineFromText() {
     return this.constructor.mutateLangMapValues(this.text, (value) => {
-      const h1Match = value.match(/<h1.*?>(.*?)<\/h1.*?>/i);
+      const h1Match = (typeof value === 'string') ? value.match(/<h1.*?>(.*?)<\/h1.*?>/i) : null;
       if (h1Match) return h1Match[1];
       // FIXME: default to something more informative of context. text, truncated?
       return 'Exhibition rich text';

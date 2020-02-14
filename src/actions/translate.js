@@ -51,7 +51,7 @@ const translateTo = async(page, toLanguageCode) => {
 
       for (const name in essence.data) {
         if (!essence.data[name][fromLocale]) essence.data[name][fromLocale] = '';
-        if (essence.data[name][fromLocale] !== translatedEssence.data[name][toLocale])
+        if (translatedEssence.data[name][toLocale] && (essence.data[name][fromLocale] !== translatedEssence.data[name][toLocale]))
           essence.data[name][toLocale] = translatedEssence.data[name][toLocale];
       }
     }

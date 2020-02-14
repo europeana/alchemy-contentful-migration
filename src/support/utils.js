@@ -36,7 +36,10 @@ class LangMap {
   }
 
   isEmpty() {
-    return Object.keys(this).length === 0;
+    const keys = Object.keys(this);
+    if (keys.length === 0) return true;
+    if (keys.length === 1 && (keys[0] === defaultLocale.contentful) && !this[keys[0]]) return true;
+    return false;
   }
 }
 

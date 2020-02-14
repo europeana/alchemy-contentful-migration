@@ -83,8 +83,11 @@ const elementHandlers = {
       const body = essences.get('body').data.body;
       if (!body.isEmpty()) {
         const richText = new RichTextEntry;
-        richText.text = essences.get('body').data.body;
-        if (richText.text.isEmpty()) richText.text = entry.name;
+        richText.text = body;
+        if (richText.text.isEmpty()) {
+          pad.log('WARNING: text is empty; falling back to entry name');
+          richText.text = entry.name;
+        }
         await richText.createAndPublish();
         entry.hasPart.push(richText.sys.id);
       }
