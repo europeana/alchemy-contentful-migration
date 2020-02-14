@@ -73,8 +73,6 @@ const elementHandlers = {
   // TODO: merge consecutive rich text entries
   exhibitionChapterPage: {
     intro: async(essences, entry) => {
-      // FIXME: may be empty, but must be present on chapter page content entries
-      //        - is this true?
       entry.name = essences.get('title').data.body;
       if (entry.name.isEmpty()) {
         pad.log('WARNING: title is empty; falling back to URL slug');
@@ -86,6 +84,7 @@ const elementHandlers = {
       if (!body.isEmpty()) {
         const richText = new RichTextEntry;
         richText.text = essences.get('body').data.body;
+        if (richText.text.isEmpty()) richText.text = entry.name;
         await richText.createAndPublish();
         entry.hasPart.push(richText.sys.id);
       }
