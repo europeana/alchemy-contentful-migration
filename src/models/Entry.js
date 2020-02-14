@@ -72,7 +72,7 @@ class Entry {
   }
 
   longTextField(langMap, options = {}) {
-    return this.textField(langMap, { ...options, ...{ max: maxLengthLong } });
+    return this.textField(langMap, { ...options });
   }
 
   licenseField(langMap) {
