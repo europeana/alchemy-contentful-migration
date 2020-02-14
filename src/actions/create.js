@@ -142,8 +142,10 @@ const elementHandlers = {
       entry.hasPart.push(richText.sys.id);
     },
     text: async(essences, entry) => {
+      const body = essences.get('body').data.body;
+      if (body.isEmpty()) return;
       const richText = new RichTextEntry;
-      richText.text = essences.get('body').data.body;
+      richText.text = body;
       await richText.createAndPublish();
       entry.hasPart.push(richText.sys.id);
     }
