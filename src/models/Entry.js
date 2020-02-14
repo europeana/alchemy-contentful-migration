@@ -1,7 +1,7 @@
 const {
   contentfulManagement, turndownService, maxLengthShort, maxLengthLong
-} = require('./config');
-const { pad, licenseMap, LangMap } = require('./utils');
+} = require('../support/config');
+const { pad, licenseMap, LangMap } = require('../support/utils');
 
 class Entry {
   constructor() {
@@ -25,13 +25,15 @@ class Entry {
 
   async createAndPublish() {
     pad.log(`- createAndPublish ${this.constructor.contentTypeId}`);
-    const entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
+    pad.increase();
+    let entry;
     try {
+      entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
       await entry.publish();
     } catch (e) {
-      console.log(`ERROR: ${e.message}`);
-      process.exit(1);
+      pad.log(`- WARNING: ${e.message}`);
     }
+    pad.decrease();
     this.sys = entry.sys;
   }
 

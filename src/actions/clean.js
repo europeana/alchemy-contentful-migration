@@ -37,7 +37,7 @@ const deleteEntry = async(id) => {
 
   pad.log('- deleting');
   try {
-    entry = await entry.delete();
+    entry.delete();
   } catch (e) {
     pad.log('ERROR: failed to delete entry');
     throw e;

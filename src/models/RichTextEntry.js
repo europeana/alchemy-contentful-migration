@@ -1,6 +1,6 @@
-const Entry = require('./Entry');
+const { LangMap } = require('../support/utils');
 
-const LangMap = require('../support/utils');
+const Entry = require('./Entry');
 
 class RichTextEntry extends Entry {
   constructor() {
