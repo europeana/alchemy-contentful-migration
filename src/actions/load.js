@@ -163,7 +163,7 @@ const pageContentQuerySql = `
             ae.page_id = ap.id
             and ae.public = 'true'
             and ae.name not in (
-              'section'
+              'promo', 'section'
             )
           order by
             language_code,

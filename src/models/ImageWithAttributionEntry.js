@@ -1,4 +1,5 @@
 const Entry = require('./Entry');
+const { LangMap } = require('../support/utils');
 
 class ImageWithAttributionEntry extends Entry {
   static get contentTypeId() {
@@ -19,6 +20,7 @@ class ImageWithAttributionEntry extends Entry {
   }
 
   get fields() {
+    if (this.name.isEmpty()) this.name = new LangMap('Exhibition image');
     return {
       name: this.shortTextField(this.name),
       image: this.linkField(this.image, 'Asset'),
