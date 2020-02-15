@@ -58,8 +58,8 @@ async function mayDeleteLinkedEntry(entry) {
     .then((response) => {
       return response.items.length;
     })
-    .catch(() => {
-      pad.log(`Failed to get links to entry; skipping: ${entry.sys.id}`);
+    .catch((e) => {
+      pad.log(`Failed to get links to entry; skipping: ${entry.sys.id}; ${e.message}`);
       return false;
     });
   return linksToEntry === 1;
@@ -68,13 +68,14 @@ async function mayDeleteLinkedEntry(entry) {
 const getEntriesPage = async() => {
   const entries = await contentfulPreviewClient.getEntries({
     'content_type': contentTypeId,
-    'include': 10
+    include: 10,
+    limit: 10 // responses may be very large, so limit the number retrieved at once
   })
     .then((response) => {
       return response.items;
     })
     .catch((e) => {
-      pad.log(`ERROR: Failed to get page of entries: ${contentTypeId}`);
+      pad.log(`ERROR: Failed to get page of entries: "${contentTypeId}"; ${e.message}`);
       throw e;
     });
   return entries || [];
