@@ -110,9 +110,6 @@ const creditExhibition = async(urlname, rows) => {
 };
 
 const migrateCredits = async() => {
-  await contentfulManagement.connect();
-  await pgClient.connect();
-
   await loadAssetIds();
 
   const result = await pgClient.query(pagesSql);
@@ -126,12 +123,15 @@ const migrateCredits = async() => {
   for (const urlname in groupedRows) {
     await creditExhibition(urlname, groupedRows[urlname]);
   }
-
-  await pgClient.end();
 };
 
 const cli = async() => {
+  await contentfulManagement.connect();
+  await pgClient.connect();
+
   await migrateCredits();
+
+  await pgClient.end();
 };
 
 const pagesSql = `
