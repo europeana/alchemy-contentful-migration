@@ -1,17 +1,26 @@
 {
-  "name": "alchemy-contentful",
+  "name": "exhibitions-alchemy-contentful-migration",
   "version": "0.0.1",
-  "description": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/europeana/exhibitions-alchemy-contentful-migration.git"
+  },
+  "keywords": [
+    "code4lib"
+  ],
+  "contributors": [
+    "Richard Doe <richard.doe@europeana.eu>",
+    "Lutz Biedinger <lutz.biedinger@europeana.eu>"
+  ],
+  "description": "A Node.js script to migrate Europeana exhibitions from Alchemy CMS data into Contentful.",
   "main": "index.js",
   "scripts": {
     "exhibition": "node index.js",
     "lint": "eslint --ext .js --ignore-path .gitignore .",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
   "license": "EUPL-1.2",
   "dependencies": {
-    "cheerio": "^1.0.0-rc.3",
     "contentful": "^7.13.1",
     "contentful-cli": "^1.2.5",
     "dotenv": "^8.2.0",
