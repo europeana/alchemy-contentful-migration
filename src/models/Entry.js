@@ -1,5 +1,5 @@
 const {
-  contentfulManagement, turndownService, maxLengthShort, maxLengthLong
+  contentfulManagement, turndownService, maxLengthShort
 } = require('../support/config');
 const { pad, licenseMap, LangMap } = require('../support/utils');
 
@@ -29,7 +29,11 @@ class Entry {
     let entry;
     try {
       entry = await contentfulManagement.environment.createEntry(this.constructor.contentTypeId, { fields: this.fields });
-      await entry.publish();
+      if (process.env['EXHIBITION_CREATE_SKIP_PUBLISH_AWAIT'] === '1') {
+        entry.publish();
+      } else {
+        await entry.publish();
+      }
     } catch (e) {
       pad.log(`- ERROR: ${e.message}`);
       process.exit(1);
@@ -85,7 +89,6 @@ class Entry {
     );
   }
 
-  // TODO: replace any h1 elements with h2?
   markdownTextField(langMap) {
     return this.constructor.mutateLangMapValues(langMap, (value) => {
       return turndownService.turndown(value);
