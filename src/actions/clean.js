@@ -1,5 +1,5 @@
 // TODO: in future, move this to its own Node package
-// TODO: check this cleans primayImageOfPage on exhibitionPage
+// TODO: check this cleans primaryImageOfPage on exhibitionPage
 // TODO: permit cleaning of a single entry by urlname/identifier
 
 const { contentfulManagement, contentfulPreviewClient } = require('../support/config');

@@ -26,7 +26,6 @@ const migrateImage = async(picture) => {
     const title = (!picture.title || picture.title === '') ? picture.image_file_name : picture.title;
     const asset = await contentfulManagement.environment.createAssetWithId(assetId, {
       fields: {
-        // TODO: truncate to maxLengthShort
         title: new LangMap(title.slice(0, maxLengthShort)),
         file: new LangMap({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,

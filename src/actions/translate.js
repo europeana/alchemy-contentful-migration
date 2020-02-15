@@ -1,5 +1,3 @@
-// TODO `analyse` function to report on the translation status of all exhibitions
-
 const { pgClient } = require('../support/config');
 const { localeMap, pad } = require('../support/utils');
 const { load, getExhibitionPageUrlnames } = require('./load');

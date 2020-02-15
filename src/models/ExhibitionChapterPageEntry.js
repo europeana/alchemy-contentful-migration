@@ -13,7 +13,6 @@ class ExhibitionChapterPageEntry extends Entry {
   get fields() {
     return {
       name: this.shortTextField(this.name),
-      // TODO: strip parent urlname from chapters
       identifier: this.shortTextField(this.identifier),
       headline: this.shortTextField(this.headline),
       description: this.shortTextField(this.description),
