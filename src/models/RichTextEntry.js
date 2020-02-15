@@ -41,10 +41,16 @@ class RichTextEntry extends Entry {
     });
   }
 
+  replaceH1WithH2(langMap) {
+    return this.constructor.mutateLangMapValues(langMap, (value) =>
+      (typeof value === 'string') ? value.replace(/<h1/ig, '<h2').replace(/<\/h1/ig, '</h2') : value
+    );
+  }
+
   get fields() {
     return {
       headline: this.shortTextField(this.headline ? this.headline : this.headlineFromText()),
-      text: this.longTextField(this.markdownTextField(this.text))
+      text: this.longTextField(this.markdownTextField(this.replaceH1WithH2(this.text)))
     };
   }
 }
