@@ -158,8 +158,7 @@ const pagesSql = `
     depth > 1
     and page_layout = 'exhibition_credit_page'
   order by
-    ap.urlname,
-    ap.language_code
+    ap.public_on asc
 `;
 
 module.exports = {
