@@ -36,6 +36,12 @@ class ExhibitionChapterPageEntry extends Entry {
     pad.log('- Combining consecutive rich text entries');
     pad.increase();
 
+    this.hasPart = await this.combinedRichTextEntries();
+    pad.decrease();
+    pad.decrease();
+  }
+
+  async combinedRichTextEntries() {
     const hasPartEntries = await this.getHasPartEntries();
 
     const hasPartBefore = [].concat(this.hasPart);
@@ -56,9 +62,7 @@ class ExhibitionChapterPageEntry extends Entry {
     }
     hasPartAfter.unshift(hasPartBefore[0]);
 
-    this.hasPart = hasPartAfter;
-    pad.decrease();
-    pad.decrease();
+    return hasPartAfter;
   }
 
   async getHasPartEntries() {
