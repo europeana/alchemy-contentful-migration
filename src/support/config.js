@@ -37,7 +37,7 @@ module.exports = {
     alchemy: 'en'
   },
   maxLengthShort: 255,
-  maxLengthLong: 2000,
+  maxLengthLong: 50000,
   pgClient,
   contentfulManagement,
   contentfulPreviewClient,

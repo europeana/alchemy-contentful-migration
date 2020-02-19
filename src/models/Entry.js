@@ -1,5 +1,5 @@
 const {
-  contentfulManagement, turndownService, maxLengthShort
+  contentfulManagement, turndownService, maxLengthShort, maxLengthLong
 } = require('../support/config');
 const { pad, licenseMap, LangMap } = require('../support/utils');
 
@@ -76,7 +76,7 @@ class Entry {
   }
 
   longTextField(langMap, options = {}) {
-    return this.textField(langMap, { ...options });
+    return this.textField(langMap, { ...options, ...{ max: maxLengthLong } });
   }
 
   licenseField(langMap) {
