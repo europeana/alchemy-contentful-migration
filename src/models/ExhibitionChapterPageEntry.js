@@ -31,20 +31,16 @@ class ExhibitionChapterPageEntry extends Entry {
 
   async combineConsecutiveRichTextEntries() {
     if (this.hasPart.length === 0) return;
+
+    pad.increase();
     pad.log('- Combining consecutive rich text entries');
     pad.increase();
 
-    const hasPartResponse = await contentfulManagement.environment.getEntries({
-      'sys.id[in]': this.hasPart.join(',')
-    });
-    const hasPartEntries = hasPartResponse.items
-      .reduce((memo, item) => {
-        memo[item.sys.id] = item;
-        return memo;
-      }, {});
+    const hasPartEntries = await this.getHasPartEntries();
 
     const hasPartBefore = [].concat(this.hasPart);
     const hasPartAfter = [];
+
     for (let i = hasPartBefore.length - 1; i > 0; i--) {
       const currentEntryId = hasPartBefore[i];
       let currentEntry = hasPartEntries[currentEntryId];
@@ -53,24 +49,42 @@ class ExhibitionChapterPageEntry extends Entry {
 
       if (currentEntry.sys.contentType.sys.id === 'richText' && previousEntry.sys.contentType.sys.id === 'richText') {
         pad.log(`- Moving text from ${currentEntryId} to ${previousEntryId}`);
-        for (const locale in currentEntry.fields.text) {
-          if (previousEntry.fields.text[locale]) {
-            previousEntry.fields.text[locale] += currentEntry.fields.text[locale];
-          } else {
-            previousEntry.fields.text[locale] = currentEntry.fields.text[locale];
-          }
-        }
-        previousEntry = await previousEntry.update();
-        previousEntry = await previousEntry.publish();
-        currentEntry = await currentEntry.unpublish();
-        currentEntry = await currentEntry.delete();
+        await this.mergeRichTextEntries(previousEntry, currentEntry);
       } else {
         hasPartAfter.unshift(currentEntryId);
       }
     }
+    hasPartAfter.unshift(hasPartBefore[0]);
 
     this.hasPart = hasPartAfter;
     pad.decrease();
+    pad.decrease();
+  }
+
+  async getHasPartEntries() {
+    const hasPartResponse = await contentfulManagement.environment.getEntries({
+      'sys.id[in]': this.hasPart.join(',')
+    });
+
+    return hasPartResponse.items
+      .reduce((memo, item) => {
+        memo[item.sys.id] = item;
+        return memo;
+      }, {});
+  }
+
+  async mergeRichTextEntries(keep, discard) {
+    for (const locale in discard.fields.text) {
+      if (keep.fields.text[locale]) {
+        keep.fields.text[locale] = [keep.fields.text[locale], discard.fields.text[locale]].join('\n\n');
+      } else {
+        keep.fields.text[locale] = discard.fields.text[locale];
+      }
+    }
+    keep = await keep.update();
+    keep = await keep.publish();
+    discard = await discard.unpublish();
+    discard = await discard.delete();
   }
 }
 
