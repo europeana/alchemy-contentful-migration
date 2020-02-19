@@ -28,10 +28,10 @@ const elementHandlers = {
       const body = essences.get('body').data.body;
       if (!body.isEmpty()) {
         const richText = new RichTextEntry;
-        richText.text = body;
+        richText.addText(body);
         if (richText.text.isEmpty()) {
           pad.log('WARNING: text is empty; falling back to entry name');
-          richText.text = entry.name;
+          richText.addText(entry.name);
         }
         await richText.createAndPublish();
         entry.hasPart.push(richText.sys.id);
@@ -90,7 +90,7 @@ const elementHandlers = {
       const body = essences.get('body').data.body;
       if (body.isEmpty()) return;
       const richText = new RichTextEntry;
-      richText.text = body;
+      richText.addText(body);
       await richText.createAndPublish();
       entry.hasPart.push(richText.sys.id);
     }
