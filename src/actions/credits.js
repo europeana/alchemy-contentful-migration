@@ -1,50 +1,11 @@
+// TODO: move into create script
+
 const { assetExists, assetIdForImage, loadAssetIds } = require('./assets');
-const { pgClient, turndownService, contentfulManagementClient } = require('./config');
+const { pgClient, turndownService, contentfulManagement } = require('../support/config');
+const { localeMap, pad } = require('../support/utils');
 
-let contentfulConnection;
-
-const pagesSql = `
-  select
-    ap.urlname,
-    ap.language_code,
-    array(
-      select
-        json_build_object(
-          'id', ac.essence_id, 'type', ac.essence_type
-        ) essence
-      from
-        alchemy_elements ae
-        inner join alchemy_contents ac on ac.element_id = ae.id
-      where
-        ap.id = ae.page_id
-      order by
-        ae.position,
-        ac.position
-    ) essences
-  from
-    alchemy_pages ap
-  where
-    depth > 1
-    and page_layout = 'exhibition_credit_page'
-  order by
-    ap.urlname,
-    ap.language_code
-`;
-
-const localeMap = {
-  de: 'de-DE',
-  en: 'en-GB',
-  'en-gb': 'en-GB',
-  es: 'es-ES',
-  fi: 'fi-FI',
-  fr: 'fr-FR',
-  it: 'it-IT',
-  lv: 'lv-LV',
-  nl: 'nl-NL',
-  pl: 'pl-PL',
-  ro: 'ro-RO',
-  sl: 'sl-SI',
-  sv: 'sv-SE'
+const help = () => {
+  pad.log('Usage: npm run exhibition credits');
 };
 
 const fetchEssence = async(type, id) => {
@@ -84,7 +45,7 @@ const contentfulAssetForAlchemyPicture = async(imageFileUid) => {
   const assetId = assetIdForImage(imageFileUid);
   if (!await assetExists(assetId)) return '';
 
-  const asset = await contentfulConnection.getAsset(assetId);
+  const asset = await contentfulManagement.environment.getAsset(assetId);
 
   return turndownService.turndown(`<img src="https:${asset.fields.file['en-GB'].url}"/>`);
 };
@@ -119,10 +80,10 @@ const creditsFromRow = async(rowEssences) => {
 };
 
 const creditExhibition = async(urlname, rows) => {
-  console.log(urlname);
+  pad.log(urlname);
   const exhibitionSlug = urlname.split('/')[0];
 
-  const entries = await contentfulConnection.getEntries({
+  const entries = await contentfulManagement.environment.getEntries({
     'content_type': 'exhibitionPage',
     'locale': 'en-GB',
     'fields.identifier': exhibitionSlug,
@@ -135,7 +96,7 @@ const creditExhibition = async(urlname, rows) => {
 
   for (const locale in rows) {
     const contentfulLocale = localeMap[locale];
-    console.log(`- ${locale} => ${contentfulLocale}`);
+    pad.log(`- ${locale} => ${contentfulLocale}`);
     const credits = await creditsFromRow(rows[locale]);
     entry.fields.credits[contentfulLocale] = credits;
   }
@@ -144,15 +105,12 @@ const creditExhibition = async(urlname, rows) => {
   try {
     await updated.publish();
   } catch (e) {
-    console.log(`Publish failed: `, e);
+    pad.log('Publish failed: ', e);
   }
 };
 
-const run = async() => {
-  contentfulConnection = await contentfulManagementClient.connect();
+const migrateCredits = async() => {
   await loadAssetIds();
-
-  await pgClient.connect();
 
   const result = await pgClient.query(pagesSql);
 
@@ -165,8 +123,46 @@ const run = async() => {
   for (const urlname in groupedRows) {
     await creditExhibition(urlname, groupedRows[urlname]);
   }
+};
+
+const cli = async() => {
+  await contentfulManagement.connect();
+  await pgClient.connect();
+
+  await migrateCredits();
 
   await pgClient.end();
 };
 
-run();
+const pagesSql = `
+  select
+    ap.urlname,
+    ap.language_code,
+    array(
+      select
+        json_build_object(
+          'id', ac.essence_id, 'type', ac.essence_type
+        ) essence
+      from
+        alchemy_elements ae
+        inner join alchemy_contents ac on ac.element_id = ae.id
+      where
+        ap.id = ae.page_id
+      order by
+        ae.position,
+        ac.position
+    ) essences
+  from
+    alchemy_pages ap
+  where
+    depth > 1
+    and page_layout = 'exhibition_credit_page'
+  order by
+    ap.public_on asc
+`;
+
+module.exports = {
+  credits: migrateCredits,
+  cli,
+  help
+};

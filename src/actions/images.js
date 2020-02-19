@@ -1,14 +1,16 @@
 require('dotenv').config();
 
-const { pgClient, contentfulManagementClient } = require('./config');
+const { pgClient, contentfulManagement, maxLengthShort } = require('../support/config');
 const { assetExists, assetIdForImage } = require('./assets');
-const { wrapLocale } = require('./utils');
+const { LangMap, pad } = require('../support/utils');
+
+const help = () => {
+  pad.log('Usage: npm run exhibition images');
+};
 
 const imageServer = process.env['ALCHEMY_IMAGE_SERVER'];
-const maxLengthShort = 255;
 
-let contentfulEnvironment;
-
+// TODO: create model class?
 const migrateImage = async(picture) => {
   const uid = picture.image_file_uid;
   const assetId = await assetIdForImage(uid);
@@ -22,10 +24,10 @@ const migrateImage = async(picture) => {
   try {
     // Assets may not be published without a title. Fallback to file name.
     const title = (!picture.title || picture.title === '') ? picture.image_file_name : picture.title;
-    const asset = await contentfulEnvironment.createAssetWithId(assetId, {
+    const asset = await contentfulManagement.environment.createAssetWithId(assetId, {
       fields: {
-        title: wrapLocale(title, { max: maxLengthShort }),
-        file: wrapLocale({
+        title: new LangMap(title.slice(0, maxLengthShort)),
+        file: new LangMap({
           contentType: picture.image_file_format ? `image/${picture.image_file_format}` : null,
           fileName: picture.image_file_name,
           upload: `${imageServer}${encodeURIComponent(uid)}`
@@ -43,9 +45,6 @@ const migrateImage = async(picture) => {
 };
 
 const migrateImages = async() => {
-  contentfulEnvironment = await contentfulManagementClient.connect();
-
-  await pgClient.connect();
   const res = await pgClient.query(`
     SELECT DISTINCT ON (ap.id, ap.image_file_uid, ap.image_file_format, ap.image_file_name) aec.title, ap.image_file_uid, ap.image_file_format, ap.image_file_name
     FROM alchemy_essence_pictures aep
@@ -55,11 +54,23 @@ const migrateImages = async() => {
     LEFT JOIN alchemy_contents acc ON acc.element_id=ae.id AND acc.essence_type='Alchemy::EssenceCredit'
     LEFT JOIN alchemy_essence_credits aec ON acc.essence_id=aec.id
   `);
-  await pgClient.end();
 
   for (const picture of res.rows) {
     await migrateImage(picture);
   }
 };
 
-migrateImages();
+const cli = async() => {
+  await contentfulManagement.connect();
+  await pgClient.connect();
+
+  await migrateImages();
+
+  await pgClient.end();
+};
+
+module.exports = {
+  migrateImages,
+  cli,
+  help
+};
