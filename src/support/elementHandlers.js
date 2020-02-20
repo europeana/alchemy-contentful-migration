@@ -15,7 +15,6 @@ const elementHandlers = {
       entry.primaryImageOfPage = primaryImageOfPage.sys.id;
     }
   },
-  // TODO: merge consecutive rich text entries
   exhibitionChapterPage: {
     intro: async(essences, entry) => {
       entry.name = essences.get('title').data.body;
