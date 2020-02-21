@@ -54,7 +54,6 @@ const elementHandlers = {
       entry.hasPart.push(image.sys.id);
 
       const richText = new RichTextEntry;
-      richText.addTitle(essences.get('title').data.body);
       richText.addSubTitle(essences.get('sub_title').data.body);
       richText.addQuote(essences.get('quote').data.body);
       richText.addQuotee(essences.get('quotee').data.body);
