@@ -20,10 +20,6 @@ class RichTextEntry extends Entry {
     this.appendToField('text', quotee, ((value) => `<p><cite>${value}</cite></p>`));
   }
 
-  addTitle(title) {
-    this.appendToField('text', title, ((value) => `<h2>${value}</h2>`));
-  }
-
   addSubTitle(subTitle) {
     this.appendToField('text', subTitle, ((value) => `<p><strong>${value}</strong></p>`));
   }
