@@ -32,6 +32,10 @@ class RichTextEntry extends Entry {
     this.appendToField('text', html);
   }
 
+  addText(text) {
+    this.appendToField('text', text, ((value) => `<p>${value}</p>`));
+  }
+
   headlineFromText() {
     return this.constructor.mutateLangMapValues(this.text, (value) => {
       const h1Match = (typeof value === 'string') ? value.match(/<h1.*?>(.*?)<\/h1.*?>/i) : null;
