@@ -51,7 +51,7 @@ resumed without starting over.
 To write a cache of the available asset IDs in the Contentful environment to
 tmp/assetIds.json, for later use by other scripts, speeding up their run time:
 ```
-npm run assets cache
+npm run exhibition assets cache
 ```
 
 ### Create
