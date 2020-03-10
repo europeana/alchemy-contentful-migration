@@ -23,7 +23,7 @@ class ImageWithAttributionEntry extends Entry {
     if (this.name.isEmpty()) this.name = new LangMap('Exhibition image');
     return {
       name: this.shortTextField(this.name),
-      image: this.linkField(this.image, 'Asset'),
+      image: this.image ? this.linkField(this.image, 'Asset') : null,
       creator: this.shortTextField(this.creator),
       provider: this.shortTextField(this.provider),
       license: this.licenseField(this.license),

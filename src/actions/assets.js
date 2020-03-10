@@ -78,6 +78,7 @@ const assetIdForPicture = async(pictureId) => {
   `;
 
   const result = await pgClient.query(sql, [pictureId]);
+  if (!result.rows[0]) return null;
   const uid = result.rows[0]['image_file_uid'];
 
   return await assetIdForImage(uid);
